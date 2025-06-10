@@ -55,7 +55,8 @@ export default function EditMemberPage() {
       await updateMember(memberId, user.uid, data);
       toast({ title: "Success", description: "Member updated successfully." });
       router.push("/members");
-    } catch (error: any)      toast({ title: "Error", description: error.message || "Failed to update member.", variant: "destructive" });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to update member.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
