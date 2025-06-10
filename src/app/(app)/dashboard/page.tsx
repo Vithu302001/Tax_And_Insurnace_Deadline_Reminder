@@ -20,11 +20,13 @@ import {
   AlertTriangle, 
   CalendarClock, 
   CalendarX2,
-  BellRing // Corrected import
+  BellRing,
+  Mail // Added Mail icon
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { differenceInDays, parseISO, isBefore } from "date-fns";
+import { differenceInDays, parseISO } from "date-fns";
+import { sendSummaryEmailAction } from "@/app/(app)/actions/sendSummaryEmailAction";
 
 type StatCounts = {
   totalActive: number;
@@ -49,6 +51,7 @@ export default function DashboardPage() {
     expired: 0,
   });
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>("all");
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   const fetchVehicles = async () => {
     if (!user) return;
@@ -136,6 +139,26 @@ export default function DashboardPage() {
     }
   };
 
+  const handleSendSummaryEmail = async () => {
+    if (!user || !user.email) {
+      toast({ title: "Error", description: "User email not found. Cannot send summary.", variant: "destructive"});
+      return;
+    }
+    setIsSendingEmail(true);
+    try {
+      const result = await sendSummaryEmailAction(user.uid, user.email, user.displayName);
+      if (result.success) {
+        toast({ title: "Success", description: result.message });
+      } else {
+        toast({ title: "Error sending email", description: result.message, variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({ title: "Error", description: "An unexpected error occurred while sending the summary email.", variant: "destructive" });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
   return (
     <div className="container mx-auto py-8 px-4 sm:px-6 lg:px-8">
       <div className="mb-8 text-left">
@@ -149,6 +172,15 @@ export default function DashboardPage() {
 
       <Card className="mb-6 shadow-md">
         <CardContent className="p-4 space-y-1">
+          <Button 
+            variant="ghost" 
+            className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted/50 py-3"
+            onClick={handleSendSummaryEmail}
+            disabled={isSendingEmail}
+          >
+            {isSendingEmail ? <Loader2 className="mr-3 h-5 w-5 animate-spin" /> : <Mail className="mr-3 h-5 w-5" />}
+            Send Summary Report
+          </Button>
           <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted/50 py-3">
             <BellRing className="mr-3 h-5 w-5" /> Notification Settings (Soon)
           </Button>
@@ -247,7 +279,8 @@ export default function DashboardPage() {
       </Card>
       
       <p className="text-sm text-muted-foreground mt-8 text-center">
-        <strong>Note:</strong> Email notifications for expiry dates are a planned feature.
+        <strong>Note:</strong> Automated email notifications for expiry dates are a planned feature.
+        You can manually send a summary report for now.
       </p>
     </div>
   );
