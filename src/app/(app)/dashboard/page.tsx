@@ -20,7 +20,7 @@ import {
   AlertTriangle, 
   CalendarClock, 
   CalendarX2,
-  BellRinging // Changed from Bell
+  BellRing // Corrected import
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
@@ -150,7 +150,7 @@ export default function DashboardPage() {
       <Card className="mb-6 shadow-md">
         <CardContent className="p-4 space-y-1">
           <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted/50 py-3">
-            <BellRinging className="mr-3 h-5 w-5" /> Notification Settings (Soon)
+            <BellRing className="mr-3 h-5 w-5" /> Notification Settings (Soon)
           </Button>
            <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted/50 py-3">
             <Settings className="mr-3 h-5 w-5" /> Account Settings (Soon)
