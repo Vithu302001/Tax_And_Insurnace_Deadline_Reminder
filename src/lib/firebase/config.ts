@@ -3,20 +3,22 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
+// Log the API key to check if it's being loaded correctly
+console.log("NEXT_PUBLIC_FIREBASE_API_KEY from env:", process.env.NEXT_PUBLIC_FIREBASE_API_KEY);
+
 // Your web app's Firebase configuration
-// WARNING: Hardcoding credentials directly in the code is not recommended for production
-// or shared environments. Please consider using environment variables (e.g., via a .env.local file)
-// as was originally implemented in this file for better security.
+// Loaded from environment variables for security
 const firebaseConfig = {
-  apiKey: "AIzaSyBI8NkO__SEopxWDVNMBsFhx1hC06F0Wc8",
-  authDomain: "familysa-aa71a.firebaseapp.com",
-  projectId: "familysa-aa71a",
-  storageBucket: "familysa-aa71a.firebasestorage.app", // Using the value you provided
-  messagingSenderId: "721247796544",
-  appId: "1:721247796544:web:9024bcfae7bd318fbfcea5"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
 // Initialize Firebase
+// Check if Firebase has already been initialized to prevent errors
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
