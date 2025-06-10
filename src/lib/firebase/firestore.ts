@@ -1,3 +1,4 @@
+
 import {
   collection,
   addDoc,
@@ -13,32 +14,39 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { db } from "./config";
-import type { Reminder, ReminderFormData } from "@/lib/types";
+import type { Vehicle, VehicleFormData, VehicleFirestoreData } from "@/lib/types";
 
-const remindersCollection = "reminders"; // Top-level collection for simplicity, can be user-nested
+const vehiclesCollection = "vehicles";
 
-// Helper to convert Firestore Timestamps to JS Dates and vice-versa for a Reminder object
-const toAppReminder = (docData: any, id: string): Reminder => {
+const toAppVehicle = (docData: any, id: string): Vehicle => {
+  const data = docData as VehicleFirestoreData;
   return {
-    ...docData,
     id,
-    expiryDate: docData.expiryDate instanceof Timestamp ? docData.expiryDate.toDate() : new Date(docData.expiryDate),
-    createdAt: docData.createdAt instanceof Timestamp ? docData.createdAt.toDate() : undefined,
-    updatedAt: docData.updatedAt instanceof Timestamp ? docData.updatedAt.toDate() : undefined,
-  } as Reminder;
+    userId: data.userId,
+    model: data.model,
+    registrationNumber: data.registrationNumber,
+    taxExpiryDate: data.taxExpiryDate.toDate(),
+    insuranceExpiryDate: data.insuranceExpiryDate.toDate(),
+    insuranceCompany: data.insuranceCompany,
+    createdAt: data.createdAt?.toDate(),
+    updatedAt: data.updatedAt?.toDate(),
+  };
 };
 
-const toFirestoreReminder = (reminderData: Partial<ReminderFormData & { userId: string }>) => {
-  const data: any = { ...reminderData };
-  if (reminderData.expiryDate) {
-    data.expiryDate = Timestamp.fromDate(new Date(reminderData.expiryDate));
+const toFirestoreVehicle = (vehicleData: Partial<VehicleFormData & { userId: string }>) => {
+  const data: any = { ...vehicleData };
+  if (vehicleData.taxExpiryDate) {
+    data.taxExpiryDate = Timestamp.fromDate(new Date(vehicleData.taxExpiryDate));
+  }
+  if (vehicleData.insuranceExpiryDate) {
+    data.insuranceExpiryDate = Timestamp.fromDate(new Date(vehicleData.insuranceExpiryDate));
   }
   return data;
 };
 
-export const addReminder = async (userId: string, reminderData: ReminderFormData): Promise<string> => {
-  const docRef = await addDoc(collection(db, remindersCollection), {
-    ...toFirestoreReminder(reminderData),
+export const addVehicle = async (userId: string, vehicleData: VehicleFormData): Promise<string> => {
+  const docRef = await addDoc(collection(db, vehiclesCollection), {
+    ...toFirestoreVehicle(vehicleData),
     userId,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -46,50 +54,47 @@ export const addReminder = async (userId: string, reminderData: ReminderFormData
   return docRef.id;
 };
 
-export const getUserReminders = async (userId: string): Promise<Reminder[]> => {
+export const getUserVehicles = async (userId: string): Promise<Vehicle[]> => {
   const q = query(
-    collection(db, remindersCollection),
+    collection(db, vehiclesCollection),
     where("userId", "==", userId),
-    orderBy("expiryDate", "asc")
+    orderBy("taxExpiryDate", "asc") // Or combine with insuranceExpiryDate for a more complex sort
   );
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => toAppReminder(doc.data(), doc.id));
+  return querySnapshot.docs.map(doc => toAppVehicle(doc.data(), doc.id));
 };
 
-export const getReminderById = async (reminderId: string, userId: string): Promise<Reminder | null> => {
-  const docRef = doc(db, remindersCollection, reminderId);
+export const getVehicleById = async (vehicleId: string, userId: string): Promise<Vehicle | null> => {
+  const docRef = doc(db, vehiclesCollection, vehicleId);
   const docSnap = await getDoc(docRef);
 
   if (docSnap.exists()) {
-    const reminder = toAppReminder(docSnap.data(), docSnap.id);
-    // Ensure the reminder belongs to the current user
-    if (reminder.userId === userId) {
-      return reminder;
+    const vehicle = toAppVehicle(docSnap.data(), docSnap.id);
+    if (vehicle.userId === userId) {
+      return vehicle;
     }
   }
   return null;
 };
 
-export const updateReminder = async (reminderId: string, userId: string, reminderData: Partial<ReminderFormData>): Promise<void> => {
-  // First, verify the reminder belongs to the user
-  const existingReminder = await getReminderById(reminderId, userId);
-  if (!existingReminder) {
-    throw new Error("Reminder not found or access denied.");
+export const updateVehicle = async (vehicleId: string, userId: string, vehicleData: Partial<VehicleFormData>): Promise<void> => {
+  const existingVehicle = await getVehicleById(vehicleId, userId);
+  if (!existingVehicle) {
+    throw new Error("Vehicle not found or access denied.");
   }
 
-  const docRef = doc(db, remindersCollection, reminderId);
+  const docRef = doc(db, vehiclesCollection, vehicleId);
   await updateDoc(docRef, {
-    ...toFirestoreReminder(reminderData),
+    ...toFirestoreVehicle(vehicleData),
     updatedAt: serverTimestamp(),
   });
 };
 
-export const deleteReminder = async (reminderId: string, userId: string): Promise<void> => {
-   // First, verify the reminder belongs to the user
-  const existingReminder = await getReminderById(reminderId, userId);
-  if (!existingReminder) {
-    throw new Error("Reminder not found or access denied.");
+export const deleteVehicle = async (vehicleId: string, userId: string): Promise<void> => {
+  const existingVehicle = await getVehicleById(vehicleId, userId);
+  if (!existingVehicle) {
+    throw new Error("Vehicle not found or access denied.");
   }
-  const docRef = doc(db, remindersCollection, reminderId);
+  const docRef = doc(db, vehiclesCollection, vehicleId);
   await deleteDoc(docRef);
 };

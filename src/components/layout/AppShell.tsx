@@ -1,3 +1,4 @@
+
 "use client";
 
 import type React from 'react';
@@ -15,7 +16,7 @@ import {
   SidebarInset,
 } from '@/components/ui/sidebar';
 import { UserNav } from '@/components/layout/UserNav';
-import { LayoutDashboard, PlusCircle, LogOut, Settings, Bell } from 'lucide-react';
+import { LayoutDashboard, PlusCircle, LogOut, Settings, Car } from 'lucide-react'; // Changed Bell to Car
 import { Button } from '@/components/ui/button';
 import { usePathname } from 'next/navigation';
 import { logout } from '@/lib/firebase/auth';
@@ -24,7 +25,7 @@ import { useRouter } from 'next/navigation';
 
 const AppLogo = () => (
   <Link href="/dashboard" className="flex items-center gap-2 px-2">
-    <Bell className="h-7 w-7 text-primary" />
+    <Car className="h-7 w-7 text-primary" /> 
     <h1 className="text-xl font-bold font-headline text-primary-foreground group-data-[collapsible=icon]:hidden">
       DeadlineMind
     </h1>
@@ -70,12 +71,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <SidebarMenuItem>
               <SidebarMenuButton
                 asChild
-                isActive={pathname === '/reminders/add'}
-                tooltip="Add Reminder"
+                isActive={pathname === '/vehicles/add'}
+                tooltip="Add Vehicle"
               >
-                <Link href="/reminders/add">
+                <Link href="/vehicles/add">
                   <PlusCircle />
-                  <span>Add Reminder</span>
+                  <span>Add Vehicle</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

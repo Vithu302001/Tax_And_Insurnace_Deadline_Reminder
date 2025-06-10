@@ -4,10 +4,10 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/hooks/useAuth";
-import { getUserReminders } from "@/lib/firebase/firestore";
+import { getUserVehicles } from "@/lib/firebase/firestore";
 import { logout } from "@/lib/firebase/auth";
-import type { Reminder } from "@/lib/types";
-import { ReminderList } from "@/components/dashboard/ReminderList";
+import type { Vehicle } from "@/lib/types";
+import { VehicleList } from "@/components/dashboard/VehicleList";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
@@ -15,16 +15,16 @@ import {
   PlusCircle, 
   Settings, 
   LogOut, 
-  Shield, 
+  Car, 
   ListChecks, 
   AlertTriangle, 
   CalendarClock, 
   CalendarX2,
-  Bell
+  BellRinging // Changed from Bell
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { differenceInDays, parseISO } from "date-fns";
+import { differenceInDays, parseISO, isBefore } from "date-fns";
 
 type StatCounts = {
   totalActive: number;
@@ -37,7 +37,7 @@ type ActiveFilter = "all" | "urgent" | "upcoming" | "expired";
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
   const router = useRouter();
@@ -50,16 +50,16 @@ export default function DashboardPage() {
   });
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>("all");
 
-  const fetchReminders = async () => {
+  const fetchVehicles = async () => {
     if (!user) return;
     setIsLoading(true);
     try {
-      const userReminders = await getUserReminders(user.uid);
-      setReminders(userReminders);
+      const userVehicles = await getUserVehicles(user.uid);
+      setVehicles(userVehicles);
     } catch (error: any) {
       toast({
-        title: "Error fetching reminders",
-        description: error.message || "Could not load your reminders.",
+        title: "Error fetching vehicles",
+        description: error.message || "Could not load your vehicles.",
         variant: "destructive",
       });
     } finally {
@@ -69,7 +69,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (user) {
-      fetchReminders();
+      fetchVehicles();
     }
   }, [user]);
 
@@ -78,22 +78,28 @@ export default function DashboardPage() {
     return differenceInDays(date, new Date());
   };
 
+  const getVehicleOverallDaysLeft = (vehicle: Vehicle): number => {
+    const daysLeftTax = getDaysUntil(vehicle.taxExpiryDate);
+    const daysLeftInsurance = getDaysUntil(vehicle.insuranceExpiryDate);
+    return Math.min(daysLeftTax, daysLeftInsurance);
+  };
+
   useEffect(() => {
-    if (reminders.length > 0) {
+    if (vehicles.length > 0) {
       let urgentCount = 0;
       let upcomingCount = 0;
       let expiredCount = 0;
       let activeCount = 0;
 
-      reminders.forEach(r => {
-        const daysLeft = getDaysUntil(r.expiryDate);
-        if (daysLeft < 0) {
+      vehicles.forEach(v => {
+        const overallDaysLeft = getVehicleOverallDaysLeft(v);
+        if (overallDaysLeft < 0) {
           expiredCount++;
         } else {
           activeCount++;
-          if (daysLeft <= 7) {
+          if (overallDaysLeft <= 7) {
             urgentCount++;
-          } else if (daysLeft <= 30) {
+          } else if (overallDaysLeft <= 30) {
             upcomingCount++;
           }
         }
@@ -102,23 +108,22 @@ export default function DashboardPage() {
     } else {
       setStats({ totalActive: 0, urgent: 0, upcoming: 0, expired: 0 });
     }
-  }, [reminders]);
+  }, [vehicles]);
 
-  const displayedReminders = useMemo(() => {
-    if (activeFilter === "all") return reminders;
-    return reminders.filter(r => {
-      const daysLeft = getDaysUntil(r.expiryDate);
-      if (activeFilter === "urgent") return daysLeft >= 0 && daysLeft <= 7;
-      if (activeFilter === "upcoming") return daysLeft > 7 && daysLeft <= 30;
-      if (activeFilter === "expired") return daysLeft < 0;
+  const displayedVehicles = useMemo(() => {
+    if (activeFilter === "all") return vehicles;
+    return vehicles.filter(v => {
+      const overallDaysLeft = getVehicleOverallDaysLeft(v);
+      if (activeFilter === "urgent") return overallDaysLeft >= 0 && overallDaysLeft <= 7;
+      if (activeFilter === "upcoming") return overallDaysLeft > 7 && overallDaysLeft <= 30;
+      if (activeFilter === "expired") return overallDaysLeft < 0;
       return true;
     });
-  }, [reminders, activeFilter]);
+  }, [vehicles, activeFilter]);
   
-  const handleDeleteReminder = (deletedReminderId: string) => {
-    const updatedReminders = reminders.filter(r => r.id !== deletedReminderId);
-    setReminders(updatedReminders);
-    // Optionally, you might want to show a toast message here if not handled by ReminderList itself
+  const handleDeleteVehicle = (deletedVehicleId: string) => {
+    const updatedVehicles = vehicles.filter(v => v.id !== deletedVehicleId);
+    setVehicles(updatedVehicles);
   };
 
   const handleLogout = async () => {
@@ -135,17 +140,17 @@ export default function DashboardPage() {
     <div className="container mx-auto py-8 px-4 sm:px-6 lg:px-8">
       <div className="mb-8 text-left">
         <h1 className="text-3xl font-bold text-foreground flex items-center">
-           <Bell className="h-8 w-8 mr-3 text-primary" /> DeadlineMind Dashboard
+           <Car className="h-8 w-8 mr-3 text-primary" /> Vehicle DeadlineMind
         </h1>
         <p className="text-muted-foreground mt-1">
-          Manage your tax and insurance expiry dates effectively.
+          Manage your vehicle tax and insurance expiry dates effectively.
         </p>
       </div>
 
       <Card className="mb-6 shadow-md">
         <CardContent className="p-4 space-y-1">
           <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted/50 py-3">
-            <Bell className="mr-3 h-5 w-5" /> Notification Settings (Soon)
+            <BellRinging className="mr-3 h-5 w-5" /> Notification Settings (Soon)
           </Button>
            <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted/50 py-3">
             <Settings className="mr-3 h-5 w-5" /> Account Settings (Soon)
@@ -159,7 +164,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <Card className="shadow-md">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Reminders</CardTitle>
+            <CardTitle className="text-sm font-medium">Active Vehicles</CardTitle>
             <ListChecks className="h-5 w-5 text-primary" />
           </CardHeader>
           <CardContent>
@@ -199,8 +204,8 @@ export default function DashboardPage() {
 
       <div className="mb-6">
         <Button asChild size="lg" className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground shadow-md">
-          <Link href="/reminders/add">
-            <PlusCircle className="mr-2 h-5 w-5" /> Add New Reminder
+          <Link href="/vehicles/add">
+            <PlusCircle className="mr-2 h-5 w-5" /> Add New Vehicle
           </Link>
         </Button>
       </div>
@@ -221,31 +226,29 @@ export default function DashboardPage() {
       <Card className="shadow-md">
         <CardHeader>
             <CardTitle className="text-xl font-headline">
-                {activeFilter.charAt(0).toUpperCase() + activeFilter.slice(1)} Reminders
+                {activeFilter.charAt(0).toUpperCase() + activeFilter.slice(1)} Vehicles
             </CardTitle>
             <CardDescription>
-                {activeFilter === 'all' && 'All your scheduled reminders.'}
-                {activeFilter === 'urgent' && 'Reminders needing immediate attention.'}
-                {activeFilter === 'upcoming' && 'Reminders due in the near future.'}
-                {activeFilter === 'expired' && 'Reminders that have passed their due date.'}
+                {activeFilter === 'all' && 'All your registered vehicles.'}
+                {activeFilter === 'urgent' && 'Vehicles needing immediate attention for renewals.'}
+                {activeFilter === 'upcoming' && 'Vehicles with renewals due in the near future.'}
+                {activeFilter === 'expired' && 'Vehicles with one or more expired documents.'}
             </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading && reminders.length === 0 ? ( // Show main loader only if truly loading initial data
+          {isLoading && vehicles.length === 0 ? ( 
             <div className="flex justify-center items-center h-64">
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
             </div>
           ) : (
-            <ReminderList reminders={displayedReminders} onDelete={handleDeleteReminder} />
+            <VehicleList vehicles={displayedVehicles} onDelete={handleDeleteVehicle} />
           )}
         </CardContent>
       </Card>
       
       <p className="text-sm text-muted-foreground mt-8 text-center">
-        <strong>Note:</strong> Email reminders are a backend feature. 
-        This UI allows managing reminder data.
+        <strong>Note:</strong> Email notifications for expiry dates are a planned feature.
       </p>
     </div>
   );
 }
-
