@@ -1,10 +1,8 @@
+
 // Import the functions you need from the SDKs you need
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-
-// Log the API key to check if it's being loaded correctly
-console.log("NEXT_PUBLIC_FIREBASE_API_KEY from env:", process.env.NEXT_PUBLIC_FIREBASE_API_KEY);
 
 // Your web app's Firebase configuration
 // Loaded from environment variables for security
