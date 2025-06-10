@@ -31,15 +31,15 @@ const getVehicleStatus = (vehicle: Vehicle): string => {
 };
 
 function generateSimpleHtmlReport(userName: string | undefined | null, vehicles: SimplifiedVehicleForReport[]): string {
-  let htmlReport = \`
+  let htmlReport = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6;">
       <h2>Vehicle Deadline Summary</h2>
-      <p>Hi \${userName || 'there'},</p>
+      <p>Hi ${userName || 'there'},</p>
       <p>Here is your vehicle summary:</p>
-  \`;
+  `;
 
   if (vehicles.length > 0) {
-    htmlReport += \`
+    htmlReport += `
       <table border="1" style="border-collapse: collapse; width: 100%; margin-top: 20px; font-size: 14px;">
         <thead style="background-color: #f2f2f2;">
           <tr>
@@ -51,27 +51,27 @@ function generateSimpleHtmlReport(userName: string | undefined | null, vehicles:
           </tr>
         </thead>
         <tbody>
-    \`;
+    `;
     vehicles.forEach(v => {
-      htmlReport += \`
+      htmlReport += `
         <tr>
-          <td style="padding: 10px;">\${v.model}</td>
-          <td style="padding: 10px;">\${v.registrationNumber}</td>
-          <td style="padding: 10px;">\${v.taxExpiryDate}</td>
-          <td style="padding: 10px;">\${v.insuranceExpiryDate}</td>
-          <td style="padding: 10px;">\${v.overallStatus}</td>
+          <td style="padding: 10px;">${v.model}</td>
+          <td style="padding: 10px;">${v.registrationNumber}</td>
+          <td style="padding: 10px;">${v.taxExpiryDate}</td>
+          <td style="padding: 10px;">${v.insuranceExpiryDate}</td>
+          <td style="padding: 10px;">${v.overallStatus}</td>
         </tr>
-      \`;
+      `;
     });
-    htmlReport += \`</tbody></table>\`;
+    htmlReport += `</tbody></table>`;
   } else {
-    htmlReport += \`<p style="margin-top: 20px;">You currently have no vehicles registered.</p>\`;
+    htmlReport += `<p style="margin-top: 20px;">You currently have no vehicles registered.</p>`;
   }
-  htmlReport += \`
+  htmlReport += `
     <br/>
     <p>Regards,<br/>The DeadlineMind Team</p>
     </div>
-  \`;
+  `;
   return htmlReport;
 }
 
