@@ -14,9 +14,20 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { db } from "./config";
-import type { Vehicle, VehicleFormData, VehicleFirestoreData } from "@/lib/types";
+import type { 
+  Vehicle, 
+  VehicleFormData, 
+  VehicleFirestoreData,
+  Member,
+  MemberFormData,
+  MemberFirestoreData
+} from "@/lib/types";
 
-const vehiclesCollection = "vehicles";
+const vehiclesCollectionName = "vehicles";
+const membersCollectionName = "members";
+
+
+// --- Vehicle Functions ---
 
 const toAppVehicle = (docData: any, id: string): Vehicle => {
   const data = docData as VehicleFirestoreData;
@@ -45,7 +56,7 @@ const toFirestoreVehicle = (vehicleData: Partial<VehicleFormData & { userId: str
 };
 
 export const addVehicle = async (userId: string, vehicleData: VehicleFormData): Promise<string> => {
-  const docRef = await addDoc(collection(db, vehiclesCollection), {
+  const docRef = await addDoc(collection(db, vehiclesCollectionName), {
     ...toFirestoreVehicle(vehicleData),
     userId,
     createdAt: serverTimestamp(),
@@ -56,16 +67,16 @@ export const addVehicle = async (userId: string, vehicleData: VehicleFormData): 
 
 export const getUserVehicles = async (userId: string): Promise<Vehicle[]> => {
   const q = query(
-    collection(db, vehiclesCollection),
+    collection(db, vehiclesCollectionName),
     where("userId", "==", userId),
-    orderBy("taxExpiryDate", "asc") // Or combine with insuranceExpiryDate for a more complex sort
+    orderBy("taxExpiryDate", "asc")
   );
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => toAppVehicle(doc.data(), doc.id));
 };
 
 export const getVehicleById = async (vehicleId: string, userId: string): Promise<Vehicle | null> => {
-  const docRef = doc(db, vehiclesCollection, vehicleId);
+  const docRef = doc(db, vehiclesCollectionName, vehicleId);
   const docSnap = await getDoc(docRef);
 
   if (docSnap.exists()) {
@@ -83,7 +94,7 @@ export const updateVehicle = async (vehicleId: string, userId: string, vehicleDa
     throw new Error("Vehicle not found or access denied.");
   }
 
-  const docRef = doc(db, vehiclesCollection, vehicleId);
+  const docRef = doc(db, vehiclesCollectionName, vehicleId);
   await updateDoc(docRef, {
     ...toFirestoreVehicle(vehicleData),
     updatedAt: serverTimestamp(),
@@ -95,6 +106,82 @@ export const deleteVehicle = async (vehicleId: string, userId: string): Promise<
   if (!existingVehicle) {
     throw new Error("Vehicle not found or access denied.");
   }
-  const docRef = doc(db, vehiclesCollection, vehicleId);
+  const docRef = doc(db, vehiclesCollectionName, vehicleId);
+  await deleteDoc(docRef);
+};
+
+
+// --- Member Functions ---
+
+const toAppMember = (docData: any, id: string): Member => {
+  const data = docData as MemberFirestoreData;
+  return {
+    id,
+    userId: data.userId,
+    name: data.name,
+    createdAt: data.createdAt?.toDate(),
+    updatedAt: data.updatedAt?.toDate(),
+  };
+};
+
+const toFirestoreMember = (memberData: Partial<MemberFormData & { userId: string }>) => {
+  const data: any = { ...memberData };
+  return data;
+};
+
+export const addMember = async (userId: string, memberData: MemberFormData): Promise<string> => {
+  const docRef = await addDoc(collection(db, membersCollectionName), {
+    ...toFirestoreMember(memberData),
+    userId,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return docRef.id;
+};
+
+export const getUserMembers = async (userId: string): Promise<Member[]> => {
+  const q = query(
+    collection(db, membersCollectionName),
+    where("userId", "==", userId),
+    orderBy("name", "asc")
+  );
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => toAppMember(doc.data(), doc.id));
+};
+
+export const getMemberById = async (memberId: string, userId: string): Promise<Member | null> => {
+  const docRef = doc(db, membersCollectionName, memberId);
+  const docSnap = await getDoc(docRef);
+
+  if (docSnap.exists()) {
+    const member = toAppMember(docSnap.data(), docSnap.id);
+    if (member.userId === userId) {
+      return member;
+    }
+  }
+  return null;
+};
+
+export const updateMember = async (memberId: string, userId: string, memberData: Partial<MemberFormData>): Promise<void> => {
+  const existingMember = await getMemberById(memberId, userId);
+  if (!existingMember) {
+    throw new Error("Member not found or access denied.");
+  }
+
+  const docRef = doc(db, membersCollectionName, memberId);
+  await updateDoc(docRef, {
+    ...toFirestoreMember(memberData),
+    updatedAt: serverTimestamp(),
+  });
+};
+
+export const deleteMember = async (memberId: string, userId: string): Promise<void> => {
+  const existingMember = await getMemberById(memberId, userId);
+  if (!existingMember) {
+    throw new Error("Member not found or access denied.");
+  }
+  // TODO: Consider what to do with vehicles associated with this member.
+  // For now, we'll just delete the member.
+  const docRef = doc(db, membersCollectionName, memberId);
   await deleteDoc(docRef);
 };

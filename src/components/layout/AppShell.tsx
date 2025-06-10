@@ -16,7 +16,7 @@ import {
   SidebarInset,
 } from '@/components/ui/sidebar';
 import { UserNav } from '@/components/layout/UserNav';
-import { LayoutDashboard, PlusCircle, LogOut, Settings, Car } from 'lucide-react'; // Changed Bell to Car
+import { LayoutDashboard, PlusCircle, LogOut, Settings, Car, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { usePathname } from 'next/navigation';
 import { logout } from '@/lib/firebase/auth';
@@ -65,6 +65,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <Link href="/dashboard">
                   <LayoutDashboard />
                   <span>Dashboard</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={pathname === '/members'}
+                tooltip="Members"
+              >
+                <Link href="/members">
+                  <Users />
+                  <span>Members</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+             <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={pathname === '/members/add'}
+                tooltip="Add Member"
+              >
+                <Link href="/members/add">
+                  <PlusCircle />
+                  <span>Add Member</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
