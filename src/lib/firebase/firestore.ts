@@ -85,8 +85,11 @@ export const getUserVehicles = async (userId: string): Promise<Vehicle[]> => {
   } catch (error: any) {
     const indexUrl = extractIndexUrl(error.message);
     if (indexUrl) {
+      console.error("Firestore Missing Index Error (Vehicles):", error.message);
+      console.error("Create Index URL:", indexUrl);
       throw new Error(`${error.message} ${INDEX_URL_MARKER_START}${indexUrl}${INDEX_URL_MARKER_END}`);
     }
+    console.error("Error fetching user vehicles:", error);
     throw error;
   }
 };
@@ -167,8 +170,11 @@ export const getUserMembers = async (userId: string): Promise<Member[]> => {
   } catch (error: any) {
     const indexUrl = extractIndexUrl(error.message);
     if (indexUrl) {
+      console.error("Firestore Missing Index Error (Members):", error.message);
+      console.error("Create Index URL:", indexUrl);
       throw new Error(`${error.message} ${INDEX_URL_MARKER_START}${indexUrl}${INDEX_URL_MARKER_END}`);
     }
+    console.error("Error fetching user members:", error);
     throw error;
   }
 };
