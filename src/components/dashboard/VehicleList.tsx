@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Edit, Trash2, Search, ArrowUpDown, CalendarDays, Car, ShieldCheck, ShieldAlert, ShieldX } from "lucide-react";
+import { Edit, Trash2, Search, ArrowUpDown, User as UserIcon } from "lucide-react";
 import Link from "next/link";
 import { format, differenceInDays, parseISO, isBefore } from "date-fns";
 import {
@@ -31,13 +31,14 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { deleteVehicle as deleteVehicleFromDb } from "@/lib/firebase/firestore";
 import { useAuth } from "@/lib/hooks/useAuth";
+import { Car } from "lucide-react"; // Added Car icon
 
 interface VehicleListProps {
   vehicles: Vehicle[];
   onDelete: (vehicleId: string) => void;
 }
 
-type SortKey = keyof Pick<Vehicle, "model" | "registrationNumber" | "taxExpiryDate" | "insuranceExpiryDate" | "insuranceCompany">;
+type SortKey = keyof Pick<Vehicle, "model" | "registrationNumber" | "taxExpiryDate" | "insuranceExpiryDate" | "insuranceCompany" | "memberName">;
 type SortDirection = "asc" | "desc";
 
 export function VehicleList({ vehicles: initialVehicles, onDelete }: VehicleListProps) {
@@ -82,18 +83,14 @@ export function VehicleList({ vehicles: initialVehicles, onDelete }: VehicleList
         (v) =>
           v.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
           v.registrationNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (v.insuranceCompany && v.insuranceCompany.toLowerCase().includes(searchTerm.toLowerCase()))
+          (v.insuranceCompany && v.insuranceCompany.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (v.memberName && v.memberName.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
 
     return filtered.sort((a, b) => {
       let valA = a[sortKey];
       let valB = b[sortKey];
-
-      if (sortKey === 'taxExpiryDate' || sortKey === 'insuranceExpiryDate') {
-        valA = new Date(a[sortKey]).getTime();
-        valB = new Date(b[sortKey]).getTime();
-      }
       
       if (valA === undefined || valA === null) valA = '';
       if (valB === undefined || valB === null) valB = '';
@@ -106,6 +103,11 @@ export function VehicleList({ vehicles: initialVehicles, onDelete }: VehicleList
       
       if (typeof valA === 'number' && typeof valB === 'number') {
          return sortDirection === "asc" ? valA - valB : valB - valA;
+      }
+
+      // Fallback for dates or other types by converting to string
+      if (valA instanceof Date && valB instanceof Date) {
+        return sortDirection === "asc" ? valA.getTime() - valB.getTime() : valB.getTime() - valA.getTime();
       }
 
       const strA = String(valA);
@@ -166,7 +168,7 @@ export function VehicleList({ vehicles: initialVehicles, onDelete }: VehicleList
         <Table>
           <TableHeader>
             <TableRow>
-              <SortableHeader columnKey="model" label="Model" />
+              <SortableHeader columnKey="model" label="Model & Member" />
               <SortableHeader columnKey="registrationNumber" label="Reg. Number" />
               <SortableHeader columnKey="taxExpiryDate" label="Tax Expiry" />
               <SortableHeader columnKey="insuranceExpiryDate" label="Insurance Expiry" />
@@ -181,7 +183,6 @@ export function VehicleList({ vehicles: initialVehicles, onDelete }: VehicleList
               const insuranceStatus = getStatusForDate(vehicle.insuranceExpiryDate);
               
               let overallStatusBadge = taxStatus.badge;
-              let overallStatusText = `Tax: ${taxStatus.status}`;
 
               if (isBefore(new Date(vehicle.insuranceExpiryDate), new Date(vehicle.taxExpiryDate))) {
                 overallStatusBadge = insuranceStatus.badge;
@@ -199,7 +200,14 @@ export function VehicleList({ vehicles: initialVehicles, onDelete }: VehicleList
 
               return (
                 <TableRow key={vehicle.id}>
-                  <TableCell className="font-medium">{vehicle.model}</TableCell>
+                  <TableCell>
+                    <div className="font-medium">{vehicle.model}</div>
+                    {vehicle.memberName && (
+                      <div className="text-xs text-muted-foreground flex items-center mt-1">
+                        <UserIcon className="h-3 w-3 mr-1" /> {vehicle.memberName}
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell>{vehicle.registrationNumber}</TableCell>
                   <TableCell>
                     {format(new Date(vehicle.taxExpiryDate), "MMM dd, yyyy")}
@@ -252,3 +260,4 @@ export function VehicleList({ vehicles: initialVehicles, onDelete }: VehicleList
     </div>
   );
 }
+

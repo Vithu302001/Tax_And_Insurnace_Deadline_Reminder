@@ -47,6 +47,8 @@ const toAppVehicle = (docData: any, id: string): Vehicle => {
     taxExpiryDate: data.taxExpiryDate instanceof Timestamp ? data.taxExpiryDate.toDate() : new Date(data.taxExpiryDate),
     insuranceExpiryDate: data.insuranceExpiryDate instanceof Timestamp ? data.insuranceExpiryDate.toDate() : new Date(data.insuranceExpiryDate),
     insuranceCompany: data.insuranceCompany,
+    memberId: data.memberId,
+    memberName: data.memberName,
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt ? new Date(data.createdAt) : undefined,
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : data.updatedAt ? new Date(data.updatedAt) : undefined,
     lastTaxNotificationSent: data.lastTaxNotificationSent instanceof Timestamp ? data.lastTaxNotificationSent.toDate() : data.lastTaxNotificationSent ? new Date(data.lastTaxNotificationSent) : undefined,
@@ -54,7 +56,7 @@ const toAppVehicle = (docData: any, id: string): Vehicle => {
   };
 };
 
-const toFirestoreVehicle = (vehicleData: Partial<VehicleFormData & { userId: string; lastTaxNotificationSent?: Date; lastInsuranceNotificationSent?: Date }>) => {
+const toFirestoreVehicle = (vehicleData: Partial<VehicleFormData & { userId?: string; memberName?: string; lastTaxNotificationSent?: Date; lastInsuranceNotificationSent?: Date }>) => {
   const data: any = { ...vehicleData };
   if (vehicleData.taxExpiryDate) {
     data.taxExpiryDate = Timestamp.fromDate(new Date(vehicleData.taxExpiryDate));
@@ -68,20 +70,56 @@ const toFirestoreVehicle = (vehicleData: Partial<VehicleFormData & { userId: str
   if (vehicleData.lastInsuranceNotificationSent) {
     data.lastInsuranceNotificationSent = Timestamp.fromDate(new Date(vehicleData.lastInsuranceNotificationSent));
   }
-  // Remove undefined fields to avoid issues with Firestore
-  Object.keys(data).forEach(key => data[key] === undefined && delete data[key]);
+  
+  if (vehicleData.memberId === "none" || vehicleData.memberId === null || vehicleData.memberId === undefined && vehicleData.hasOwnProperty('memberId')) {
+    data.memberId = null;
+    data.memberName = null;
+  } else if (vehicleData.memberId) {
+     data.memberId = vehicleData.memberId;
+     // memberName should be set before calling this function if memberId is present
+     if (vehicleData.memberName) {
+        data.memberName = vehicleData.memberName;
+     }
+  } else if (vehicleData.hasOwnProperty('memberId') && !vehicleData.memberId) { // Explicitly unsetting
+    data.memberId = null;
+    data.memberName = null;
+  }
+
+
+  // Remove undefined fields to avoid issues with Firestore, unless it's memberId/memberName being explicitly nulled
+  Object.keys(data).forEach(key => {
+    if (data[key] === undefined && !['memberId', 'memberName', 'insuranceCompany'].includes(key)) {
+        delete data[key]
+    }
+  });
   return data;
 };
 
 export const addVehicle = async (userId: string, vehicleData: VehicleFormData): Promise<string> => {
-  const docRef = await addDoc(collection(db, vehiclesCollectionName), {
-    ...toFirestoreVehicle(vehicleData),
+  let memberName: string | undefined = undefined;
+  if (vehicleData.memberId && vehicleData.memberId !== "none") {
+    const member = await getMemberById(vehicleData.memberId, userId);
+    if (member) {
+      memberName = member.name;
+    }
+  }
+
+  const firestorePayload: Partial<VehicleFirestoreData> & { userId: string } = {
     userId,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-    lastTaxNotificationSent: null, 
+    model: vehicleData.model,
+    registrationNumber: vehicleData.registrationNumber,
+    taxExpiryDate: Timestamp.fromDate(new Date(vehicleData.taxExpiryDate)),
+    insuranceExpiryDate: Timestamp.fromDate(new Date(vehicleData.insuranceExpiryDate)),
+    insuranceCompany: vehicleData.insuranceCompany || null, // Store null if undefined
+    memberId: (vehicleData.memberId && vehicleData.memberId !== "none") ? vehicleData.memberId : null,
+    memberName: memberName || null, // Store null if undefined
+    createdAt: serverTimestamp() as Timestamp, // Cast for type consistency
+    updatedAt: serverTimestamp() as Timestamp, // Cast for type consistency
+    lastTaxNotificationSent: null,
     lastInsuranceNotificationSent: null,
-  });
+  };
+
+  const docRef = await addDoc(collection(db, vehiclesCollectionName), firestorePayload);
   return docRef.id;
 };
 
@@ -125,7 +163,7 @@ export const getVehicleById = async (vehicleId: string, userId?: string): Promis
   if (docSnap.exists()) {
     const vehicle = toAppVehicle(docSnap.data(), docSnap.id);
     if (userId && vehicle.userId !== userId) {
-      return null; 
+      return null;
     }
     return vehicle;
   }
@@ -138,9 +176,28 @@ export const updateVehicle = async (vehicleId: string, userId: string, vehicleDa
     throw new Error("Vehicle not found or access denied.");
   }
 
+  let memberNameUpdate: string | null = existingVehicle.memberName || null;
+
+  if (vehicleData.hasOwnProperty('memberId')) { // Check if memberId is part of the update
+    if (vehicleData.memberId && vehicleData.memberId !== "none") {
+      const member = await getMemberById(vehicleData.memberId, userId);
+      memberNameUpdate = member ? member.name : null;
+    } else { // memberId is "none", null, or undefined (and was in vehicleData)
+      memberNameUpdate = null;
+    }
+  }
+  
+  const dataToUpdate = toFirestoreVehicle({
+     ...vehicleData, 
+     memberName: memberNameUpdate, 
+     // ensure memberId is explicitly set to null if it's 'none' or undefined in vehicleData
+     memberId: (vehicleData.memberId === "none" || !vehicleData.memberId) ? null : vehicleData.memberId 
+  });
+
+
   const docRef = doc(db, vehiclesCollectionName, vehicleId);
   await updateDoc(docRef, {
-    ...toFirestoreVehicle(vehicleData),
+    ...dataToUpdate,
     updatedAt: serverTimestamp(),
   });
 };
@@ -148,7 +205,7 @@ export const updateVehicle = async (vehicleId: string, userId: string, vehicleDa
 export const updateVehicleNotificationTimestamp = async (
   vehicleId: string,
   notificationType: 'tax' | 'insurance',
-  timestamp: Timestamp 
+  timestamp: Timestamp
 ): Promise<void> => {
   const docRef = doc(db, vehiclesCollectionName, vehicleId);
   const updateData: any = { updatedAt: serverTimestamp() };
@@ -226,8 +283,12 @@ export const getMemberById = async (memberId: string, userId: string): Promise<M
 
   if (docSnap.exists()) {
     const member = toAppMember(docSnap.data(), docSnap.id);
-    if (member.userId === userId) {
+    // Ensure the member belongs to the requesting user, unless this check is handled elsewhere or not needed for this specific call context
+    if (member.userId === userId) { 
       return member;
+    } else {
+      console.warn(`Access denied: User ${userId} tried to fetch member ${memberId} owned by ${member.userId}`);
+      return null;
     }
   }
   return null;
@@ -254,3 +315,4 @@ export const deleteMember = async (memberId: string, userId: string): Promise<vo
   const docRef = doc(db, membersCollectionName, memberId);
   await deleteDoc(docRef);
 };
+

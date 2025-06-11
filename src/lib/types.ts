@@ -16,6 +16,8 @@ export interface Vehicle {
   taxExpiryDate: Date;
   insuranceExpiryDate: Date;
   insuranceCompany?: string;
+  memberId?: string; // New field
+  memberName?: string; // New field (denormalized for display)
   createdAt?: Date;
   updatedAt?: Date;
   lastTaxNotificationSent?: Date;
@@ -25,6 +27,8 @@ export interface Vehicle {
 export interface VehicleFirestoreData extends Omit<Vehicle, 'id' | 'taxExpiryDate' | 'insuranceExpiryDate' | 'createdAt' | 'updatedAt' | 'lastTaxNotificationSent' | 'lastInsuranceNotificationSent'> {
   taxExpiryDate: Timestamp;
   insuranceExpiryDate: Timestamp;
+  memberId?: string;      // New field
+  memberName?: string;    // New field
   createdAt: Timestamp;
   updatedAt: Timestamp;
   lastTaxNotificationSent?: Timestamp;
@@ -37,6 +41,7 @@ export type VehicleFormData = {
   taxExpiryDate: Date;
   insuranceExpiryDate: Date;
   insuranceCompany?: string;
+  memberId?: string; // New field
 };
 
 // New Member types
@@ -65,3 +70,4 @@ export interface SimplifiedVehicleForReport {
   insuranceExpiryDate: string; // Formatted as 'MMM dd, yyyy'
   overallStatus: string; // e.g., Urgent, Upcoming, Expired, Safe
 }
+
