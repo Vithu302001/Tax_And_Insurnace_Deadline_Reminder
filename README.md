@@ -1,3 +1,3 @@
 # Remind Me
-An reminder app via email about vehicles tax and insurace expiry .
+An reminder web app via email about vehicles tax and insurace expiry .
 
