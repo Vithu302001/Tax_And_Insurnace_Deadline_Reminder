@@ -6,6 +6,7 @@ export interface UserProfile {
   email: string | null;
   displayName?: string | null;
   photoURL?: string | null;
+  phoneNumber?: string | null; // Added for WhatsApp
 }
 
 export interface Vehicle {
@@ -16,8 +17,8 @@ export interface Vehicle {
   taxExpiryDate: Date;
   insuranceExpiryDate: Date;
   insuranceCompany?: string;
-  memberId?: string; // New field
-  memberName?: string; // New field (denormalized for display)
+  memberId?: string;
+  memberName?: string;
   createdAt?: Date;
   updatedAt?: Date;
   lastTaxNotificationSent?: Date;
@@ -27,8 +28,8 @@ export interface Vehicle {
 export interface VehicleFirestoreData extends Omit<Vehicle, 'id' | 'taxExpiryDate' | 'insuranceExpiryDate' | 'createdAt' | 'updatedAt' | 'lastTaxNotificationSent' | 'lastInsuranceNotificationSent'> {
   taxExpiryDate: Timestamp;
   insuranceExpiryDate: Timestamp;
-  memberId?: string;      // New field
-  memberName?: string;    // New field
+  memberId?: string;
+  memberName?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
   lastTaxNotificationSent?: Timestamp;
@@ -41,13 +42,12 @@ export type VehicleFormData = {
   taxExpiryDate: Date;
   insuranceExpiryDate: Date;
   insuranceCompany?: string;
-  memberId?: string; // New field
+  memberId?: string;
 };
 
-// New Member types
 export interface Member {
   id: string;
-  userId: string; // The user who created this member
+  userId: string;
   name: string;
   createdAt?: Date;
   updatedAt?: Date;
@@ -62,12 +62,10 @@ export type MemberFormData = {
   name: string;
 };
 
-// For report generation
 export interface SimplifiedVehicleForReport {
   model: string;
   registrationNumber: string;
-  taxExpiryDate: string; // Formatted as 'MMM dd, yyyy'
-  insuranceExpiryDate: string; // Formatted as 'MMM dd, yyyy'
-  overallStatus: string; // e.g., Urgent, Upcoming, Expired, Safe
+  taxExpiryDate: string;
+  insuranceExpiryDate: string;
+  overallStatus: string;
 }
-
