@@ -20,100 +20,116 @@ const getVehicleStatusForReport = (expiryDate: Date): string => {
 
 
 export async function GET(request: Request) {
-  // TODO: Secure this endpoint! Add a secret key check, IP whitelist, or other auth mechanism.
-  // const authHeader = request.headers.get('Authorization');
-  // if (authHeader !== \`Bearer \${process.env.CRON_SECRET}\`) {
-  //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  // }
+  const authHeader = request.headers.get('Authorization');
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    console.warn('Unauthorized attempt to access /api/check-expiries');
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   let vehiclesChecked = 0;
   let notificationsSent = 0;
   let errorsEncountered = 0;
   const details = [];
+  console.log('Cron job /api/check-expiries started at:', new Date().toISOString());
 
   try {
     const allVehicles = await getAllVehicles();
     vehiclesChecked = allVehicles.length;
+    details.push(`Found ${vehiclesChecked} vehicles to check.`);
 
     for (const vehicle of allVehicles) {
       const now = new Date();
       const tenDaysAgo = addDays(now, -NOTIFICATION_RESEND_GRACE_PERIOD_DAYS);
 
       // Check Tax Expiry
-      const taxDaysLeft = differenceInDays(vehicle.taxExpiryDate, now);
+      const taxExpiryDate = vehicle.taxExpiryDate instanceof Timestamp ? vehicle.taxExpiryDate.toDate() : new Date(vehicle.taxExpiryDate);
+      const taxDaysLeft = differenceInDays(taxExpiryDate, now);
+
       if (taxDaysLeft <= DAYS_UNTIL_EXPIRY_NOTIFICATION) {
-        if (!vehicle.lastTaxNotificationSent || isBefore(vehicle.lastTaxNotificationSent, tenDaysAgo)) {
+        const lastTaxNotification = vehicle.lastTaxNotificationSent instanceof Timestamp ? vehicle.lastTaxNotificationSent.toDate() : vehicle.lastTaxNotificationSent ? new Date(vehicle.lastTaxNotificationSent) : null;
+        if (!lastTaxNotification || isBefore(lastTaxNotification, tenDaysAgo)) {
+          details.push(`Vehicle ${vehicle.id} (User: ${vehicle.userId}): Tax expires in ${taxDaysLeft} days. Last notification: ${lastTaxNotification ? lastTaxNotification.toISOString() : 'Never'}.`);
           const userProfile = await getUserProfileById(vehicle.userId);
           if (userProfile && userProfile.email) {
             const simplifiedReportVehicle: SimplifiedVehicleForReport = {
               model: vehicle.model,
               registrationNumber: vehicle.registrationNumber,
-              taxExpiryDate: format(vehicle.taxExpiryDate, "MMM dd, yyyy"),
-              insuranceExpiryDate: format(vehicle.insuranceExpiryDate, "MMM dd, yyyy"), // Include for context
-              overallStatus: getVehicleStatusForReport(vehicle.taxExpiryDate),
+              taxExpiryDate: format(taxExpiryDate, "MMM dd, yyyy"),
+              insuranceExpiryDate: format(vehicle.insuranceExpiryDate instanceof Timestamp ? vehicle.insuranceExpiryDate.toDate() : new Date(vehicle.insuranceExpiryDate), "MMM dd, yyyy"),
+              overallStatus: getVehicleStatusForReport(taxExpiryDate),
             };
             const reportHtml = generateSimpleHtmlReport(
               userProfile.displayName || userProfile.email.split('@')[0],
               [simplifiedReportVehicle],
-              \`Urgent: Tax Expiry for \${vehicle.model}\`
+              `Urgent: Tax Expiry for ${vehicle.model}`
             );
             try {
               await sendVehicleSummaryEmail(
                 { email: userProfile.email, name: userProfile.displayName || undefined },
                 reportHtml,
-                \`Vehicle Tax Expiry Reminder: \${vehicle.model}\`
+                `Vehicle Tax Expiry Reminder: ${vehicle.model}`
               );
               await updateVehicleNotificationTimestamp(vehicle.id, 'tax', Timestamp.now());
               notificationsSent++;
-              details.push(\`Tax notification sent for vehicle \${vehicle.id} to user \${vehicle.userId}\`);
+              details.push(`Tax notification sent for vehicle ${vehicle.id} to user ${vehicle.userId} (${userProfile.email}).`);
             } catch (emailError) {
               errorsEncountered++;
-              details.push(\`Failed to send tax notification for vehicle \${vehicle.id}: \${(emailError as Error).message}\`);
+              details.push(`Failed to send tax notification for vehicle ${vehicle.id}: ${(emailError as Error).message}`);
             }
           } else {
-            details.push(\`Tax expiring for vehicle \${vehicle.id} (user \${vehicle.userId}), but user email not found or notification sent recently.\`);
+            details.push(`Tax expiring for vehicle ${vehicle.id} (user ${vehicle.userId}), but user email not found or notification sent recently.`);
+            if(!userProfile) console.warn(`Could not find user profile for userId: ${vehicle.userId} to send tax expiry email.`);
           }
+        } else {
+          details.push(`Vehicle ${vehicle.id}: Tax expiring soon, but notification already sent recently (${lastTaxNotification?.toISOString()}).`);
         }
       }
 
       // Check Insurance Expiry
-      const insuranceDaysLeft = differenceInDays(vehicle.insuranceExpiryDate, now);
+      const insuranceExpiryDate = vehicle.insuranceExpiryDate instanceof Timestamp ? vehicle.insuranceExpiryDate.toDate() : new Date(vehicle.insuranceExpiryDate);
+      const insuranceDaysLeft = differenceInDays(insuranceExpiryDate, now);
+
       if (insuranceDaysLeft <= DAYS_UNTIL_EXPIRY_NOTIFICATION) {
-         if (!vehicle.lastInsuranceNotificationSent || isBefore(vehicle.lastInsuranceNotificationSent, tenDaysAgo)) {
+        const lastInsuranceNotification = vehicle.lastInsuranceNotificationSent instanceof Timestamp ? vehicle.lastInsuranceNotificationSent.toDate() : vehicle.lastInsuranceNotificationSent ? new Date(vehicle.lastInsuranceNotificationSent) : null;
+         if (!lastInsuranceNotification || isBefore(lastInsuranceNotification, tenDaysAgo)) {
+          details.push(`Vehicle ${vehicle.id} (User: ${vehicle.userId}): Insurance expires in ${insuranceDaysLeft} days. Last notification: ${lastInsuranceNotification ? lastInsuranceNotification.toISOString() : 'Never'}.`);
           const userProfile = await getUserProfileById(vehicle.userId);
           if (userProfile && userProfile.email) {
              const simplifiedReportVehicle: SimplifiedVehicleForReport = {
               model: vehicle.model,
               registrationNumber: vehicle.registrationNumber,
-              taxExpiryDate: format(vehicle.taxExpiryDate, "MMM dd, yyyy"), // Include for context
-              insuranceExpiryDate: format(vehicle.insuranceExpiryDate, "MMM dd, yyyy"),
-              overallStatus: getVehicleStatusForReport(vehicle.insuranceExpiryDate),
+              taxExpiryDate: format(taxExpiryDate, "MMM dd, yyyy"),
+              insuranceExpiryDate: format(insuranceExpiryDate, "MMM dd, yyyy"),
+              overallStatus: getVehicleStatusForReport(insuranceExpiryDate),
             };
             const reportHtml = generateSimpleHtmlReport(
               userProfile.displayName || userProfile.email.split('@')[0],
               [simplifiedReportVehicle],
-              \`Urgent: Insurance Expiry for \${vehicle.model}\`
+              `Urgent: Insurance Expiry for ${vehicle.model}`
             );
             try {
               await sendVehicleSummaryEmail(
                 { email: userProfile.email, name: userProfile.displayName || undefined },
                 reportHtml,
-                \`Vehicle Insurance Expiry Reminder: \${vehicle.model}\`
+                `Vehicle Insurance Expiry Reminder: ${vehicle.model}`
               );
               await updateVehicleNotificationTimestamp(vehicle.id, 'insurance', Timestamp.now());
               notificationsSent++;
-              details.push(\`Insurance notification sent for vehicle \${vehicle.id} to user \${vehicle.userId}\`);
+              details.push(`Insurance notification sent for vehicle ${vehicle.id} to user ${vehicle.userId} (${userProfile.email}).`);
             } catch (emailError) {
               errorsEncountered++;
-              details.push(\`Failed to send insurance notification for vehicle \${vehicle.id}: \${(emailError as Error).message}\`);
+              details.push(`Failed to send insurance notification for vehicle ${vehicle.id}: ${(emailError as Error).message}`);
             }
           } else {
-            details.push(\`Insurance expiring for vehicle \${vehicle.id} (user \${vehicle.userId}), but user email not found or notification sent recently.\`);
+            details.push(`Insurance expiring for vehicle ${vehicle.id} (user ${vehicle.userId}), but user email not found or notification sent recently.`);
+            if(!userProfile) console.warn(`Could not find user profile for userId: ${vehicle.userId} to send insurance expiry email.`);
           }
+        } else {
+           details.push(`Vehicle ${vehicle.id}: Insurance expiring soon, but notification already sent recently (${lastInsuranceNotification?.toISOString()}).`);
         }
       }
     }
-
+    console.log('Cron job /api/check-expiries finished. Checked:', vehiclesChecked, 'Sent:', notificationsSent, 'Errors:', errorsEncountered);
     return NextResponse.json({
       message: 'Expiry check complete.',
       vehiclesChecked,
@@ -124,6 +140,15 @@ export async function GET(request: Request) {
 
   } catch (error: any) {
     console.error('Error in /api/check-expiries:', error);
-    return NextResponse.json({ error: 'Failed to process expiry checks.', details: error.message }, { status: 500 });
+    errorsEncountered++;
+    details.push(`CRITICAL ERROR during processing: ${error.message}`);
+    return NextResponse.json({
+        message: 'Expiry check failed with critical error.',
+        vehiclesChecked,
+        notificationsSent,
+        errorsEncountered,
+        details: error.message,
+        error: 'Failed to process expiry checks.'
+    }, { status: 500 });
   }
 }
