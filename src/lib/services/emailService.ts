@@ -9,18 +9,19 @@ export interface EmailRecipient {
 
 export async function sendVehicleSummaryEmail(
   recipient: EmailRecipient,
-  reportHtml: string
+  reportHtml: string,
+  subject: string = 'Your Vehicle Deadline Summary' // Added subject parameter
 ): Promise<void> {
   const resendApiKey = process.env.RESEND_API_KEY;
   const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
 
   let missingConfigError = "";
   if (!resendApiKey && !emailFromAddress) {
-    missingConfigError = "Both RESEND_API_KEY and EMAIL_FROM_ADDRESS are missing from environment variables.";
+    missingConfigError = "CRITICAL: Both RESEND_API_KEY and EMAIL_FROM_ADDRESS are missing. Email service non-functional.";
   } else if (!resendApiKey) {
-    missingConfigError = "RESEND_API_KEY is not set in environment variables. Email service cannot be initialized.";
+    missingConfigError = "CRITICAL: RESEND_API_KEY is not set. Email service non-functional.";
   } else if (!emailFromAddress) {
-    missingConfigError = "EMAIL_FROM_ADDRESS is not set in environment variables. Email service cannot be initialized.";
+    missingConfigError = "CRITICAL: EMAIL_FROM_ADDRESS is not set. Email service non-functional.";
   }
 
   if (missingConfigError) {
@@ -34,25 +35,24 @@ export async function sendVehicleSummaryEmail(
     const { data, error } = await resend.emails.send({
       from: `DeadlineMind <${emailFromAddress}>`,
       to: recipient.email,
-      subject: 'Your Vehicle Deadline Summary',
+      subject: subject, // Use the subject parameter
       html: reportHtml,
     });
 
     if (error) {
-      console.error('Error sending summary email via Resend:', error);
-      throw new Error(`Failed to send summary email: ${error.message}`);
+      console.error('Error sending email via Resend:', error);
+      throw new Error(`Failed to send email: ${error.message}`);
     }
 
-    console.log('Summary email sent successfully to', recipient.email, 'ID:', data?.id);
+    console.log('Email sent successfully to', recipient.email, 'ID:', data?.id);
   } catch (error) {
-    // Catch any other unexpected errors during the send process
-    console.error('Unexpected error sending summary email:', error);
-    if (error instanceof Error && error.message.startsWith("RESEND_API_KEY") || error.message.startsWith("EMAIL_FROM_ADDRESS")) {
-        throw error; // Re-throw our specific config errors
+    console.error('Unexpected error sending email:', error);
+    if (error instanceof Error && (error.message.startsWith("CRITICAL:") || error.message.startsWith("RESEND_API_KEY") || error.message.startsWith("EMAIL_FROM_ADDRESS"))) {
+        throw error;
     }
     if (error instanceof Error) {
-        throw new Error(`Failed to send summary email: ${error.message}`);
+        throw new Error(`Failed to send email: ${error.message}`);
     }
-    throw new Error('An unknown error occurred while sending the summary email.');
+    throw new Error('An unknown error occurred while sending the email.');
   }
 }

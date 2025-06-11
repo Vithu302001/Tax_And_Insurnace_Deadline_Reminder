@@ -11,21 +11,24 @@ export interface UserProfile {
 export interface Vehicle {
   id: string;
   userId: string;
-  model: string; 
+  model: string;
   registrationNumber: string;
   taxExpiryDate: Date;
   insuranceExpiryDate: Date;
   insuranceCompany?: string;
-  // memberId?: string; // We will add this later
-  createdAt?: Date; 
-  updatedAt?: Date; 
+  createdAt?: Date;
+  updatedAt?: Date;
+  lastTaxNotificationSent?: Date;
+  lastInsuranceNotificationSent?: Date;
 }
 
-export interface VehicleFirestoreData extends Omit<Vehicle, 'id' | 'taxExpiryDate' | 'insuranceExpiryDate' | 'createdAt' | 'updatedAt'> {
+export interface VehicleFirestoreData extends Omit<Vehicle, 'id' | 'taxExpiryDate' | 'insuranceExpiryDate' | 'createdAt' | 'updatedAt' | 'lastTaxNotificationSent' | 'lastInsuranceNotificationSent'> {
   taxExpiryDate: Timestamp;
   insuranceExpiryDate: Timestamp;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  lastTaxNotificationSent?: Timestamp;
+  lastInsuranceNotificationSent?: Timestamp;
 }
 
 export type VehicleFormData = {
@@ -34,7 +37,6 @@ export type VehicleFormData = {
   taxExpiryDate: Date;
   insuranceExpiryDate: Date;
   insuranceCompany?: string;
-  // memberId?: string; // We will add this later
 };
 
 // New Member types
@@ -54,3 +56,12 @@ export interface MemberFirestoreData extends Omit<Member, 'id' | 'createdAt' | '
 export type MemberFormData = {
   name: string;
 };
+
+// For report generation
+export interface SimplifiedVehicleForReport {
+  model: string;
+  registrationNumber: string;
+  taxExpiryDate: string; // Formatted as 'MMM dd, yyyy'
+  insuranceExpiryDate: string; // Formatted as 'MMM dd, yyyy'
+  overallStatus: string; // e.g., Urgent, Upcoming, Expired, Safe
+}

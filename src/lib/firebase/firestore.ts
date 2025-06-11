@@ -49,10 +49,12 @@ const toAppVehicle = (docData: any, id: string): Vehicle => {
     insuranceCompany: data.insuranceCompany,
     createdAt: data.createdAt?.toDate(),
     updatedAt: data.updatedAt?.toDate(),
+    lastTaxNotificationSent: data.lastTaxNotificationSent?.toDate(),
+    lastInsuranceNotificationSent: data.lastInsuranceNotificationSent?.toDate(),
   };
 };
 
-const toFirestoreVehicle = (vehicleData: Partial<VehicleFormData & { userId: string }>) => {
+const toFirestoreVehicle = (vehicleData: Partial<VehicleFormData & { userId: string; lastTaxNotificationSent?: Date; lastInsuranceNotificationSent?: Date }>) => {
   const data: any = { ...vehicleData };
   if (vehicleData.taxExpiryDate) {
     data.taxExpiryDate = Timestamp.fromDate(new Date(vehicleData.taxExpiryDate));
@@ -60,6 +62,14 @@ const toFirestoreVehicle = (vehicleData: Partial<VehicleFormData & { userId: str
   if (vehicleData.insuranceExpiryDate) {
     data.insuranceExpiryDate = Timestamp.fromDate(new Date(vehicleData.insuranceExpiryDate));
   }
+  if (vehicleData.lastTaxNotificationSent) {
+    data.lastTaxNotificationSent = Timestamp.fromDate(new Date(vehicleData.lastTaxNotificationSent));
+  }
+  if (vehicleData.lastInsuranceNotificationSent) {
+    data.lastInsuranceNotificationSent = Timestamp.fromDate(new Date(vehicleData.lastInsuranceNotificationSent));
+  }
+  // Remove undefined fields to avoid issues with Firestore
+  Object.keys(data).forEach(key => data[key] === undefined && delete data[key]);
   return data;
 };
 
@@ -69,6 +79,8 @@ export const addVehicle = async (userId: string, vehicleData: VehicleFormData): 
     userId,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+    lastTaxNotificationSent: null, // Initialize notification timestamps
+    lastInsuranceNotificationSent: null,
   });
   return docRef.id;
 };
@@ -94,15 +106,36 @@ export const getUserVehicles = async (userId: string): Promise<Vehicle[]> => {
   }
 };
 
-export const getVehicleById = async (vehicleId: string, userId: string): Promise<Vehicle | null> => {
+export const getAllVehicles = async (): Promise<Vehicle[]> => {
+  try {
+    // Note: Querying all documents in a collection can be inefficient for large datasets.
+    // Consider adding filters or pagination if performance becomes an issue.
+    // This basic query might require an index on 'taxExpiryDate' if you intend to sort.
+    // For now, we fetch without specific ordering for the cron job.
+    const q = query(collection(db, vehiclesCollectionName));
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => toAppVehicle(doc.data(), doc.id));
+  } catch (error: any) {
+    // A global query like this is less likely to hit the specific 'create index' link issue
+    // unless it includes orderBy clauses that require a composite index.
+    console.error("Error fetching all vehicles:", error);
+    throw error;
+  }
+};
+
+
+export const getVehicleById = async (vehicleId: string, userId?: string): Promise<Vehicle | null> => {
   const docRef = doc(db, vehiclesCollectionName, vehicleId);
   const docSnap = await getDoc(docRef);
 
   if (docSnap.exists()) {
     const vehicle = toAppVehicle(docSnap.data(), docSnap.id);
-    if (vehicle.userId === userId) {
-      return vehicle;
+    // If userId is provided, ensure the vehicle belongs to that user.
+    // If userId is not provided (e.g., for an admin or system process), return the vehicle.
+    if (userId && vehicle.userId !== userId) {
+      return null; // Access denied or vehicle not found for this user
     }
+    return vehicle;
   }
   return null;
 };
@@ -119,6 +152,23 @@ export const updateVehicle = async (vehicleId: string, userId: string, vehicleDa
     updatedAt: serverTimestamp(),
   });
 };
+
+// Specific update for notification timestamps by a system process
+export const updateVehicleNotificationTimestamp = async (
+  vehicleId: string,
+  notificationType: 'tax' | 'insurance',
+  timestamp: Timestamp
+): Promise<void> => {
+  const docRef = doc(db, vehiclesCollectionName, vehicleId);
+  const updateData: any = { updatedAt: serverTimestamp() };
+  if (notificationType === 'tax') {
+    updateData.lastTaxNotificationSent = timestamp;
+  } else {
+    updateData.lastInsuranceNotificationSent = timestamp;
+  }
+  await updateDoc(docRef, updateData);
+};
+
 
 export const deleteVehicle = async (vehicleId: string, userId: string): Promise<void> => {
   const existingVehicle = await getVehicleById(vehicleId, userId);
@@ -210,9 +260,17 @@ export const deleteMember = async (memberId: string, userId: string): Promise<vo
   if (!existingMember) {
     throw new Error("Member not found or access denied.");
   }
-  // TODO: Consider what to do with vehicles associated with this member.
-  // For now, we'll just delete the member.
   const docRef = doc(db, membersCollectionName, memberId);
   await deleteDoc(docRef);
 };
+
+// --- User Data Functions (Stub) ---
+export async function getUserProfileById(userId: string): Promise<{email: string | null; displayName: string | null} | null> {
+  // TODO: Implement this function securely, likely using Firebase Admin SDK in a backend environment (e.g., Cloud Function).
+  // This client-side SDK cannot directly fetch arbitrary user profiles by UID for security reasons.
+  // For now, this function will simulate a lookup or return null.
+  console.warn(`getUserProfileById STUB: Attempting to get profile for ${userId}. This needs a backend implementation.`);
+  // Example: if (userId === "known-test-user-id") return { email: "test@example.com", displayName: "Test User" };
+  return null;
+}
 
