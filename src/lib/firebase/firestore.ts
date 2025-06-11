@@ -22,7 +22,8 @@ import type {
   VehicleFirestoreData,
   Member,
   MemberFormData,
-  MemberFirestoreData
+  MemberFirestoreData,
+  UserNotificationDetails,
 } from "@/lib/types";
 
 const vehiclesCollectionName = "vehicles";
@@ -179,7 +180,6 @@ export const getUserVehicles = async (userId: string): Promise<Vehicle[]> => {
     const indexUrl = extractIndexUrl(error.message);
     if (indexUrl) {
       console.error("Firestore Missing Index Error (Vehicles):", error.message);
-      console.error("Create Index URL:", indexUrl);
       throw new Error(`${error.message} ${INDEX_URL_MARKER_START}${indexUrl}${INDEX_URL_MARKER_END}`);
     }
     console.error("Error fetching user vehicles:", error);
@@ -288,7 +288,6 @@ export const getUserMembers = async (userId: string): Promise<Member[]> => {
     const indexUrl = extractIndexUrl(error.message);
     if (indexUrl) {
       console.error("Firestore Missing Index Error (Members):", error.message);
-      console.error("Create Index URL:", indexUrl);
       throw new Error(`${error.message} ${INDEX_URL_MARKER_START}${indexUrl}${INDEX_URL_MARKER_END}`);
     }
     console.error("Error fetching user members:", error);
@@ -362,24 +361,45 @@ export const deleteMember = async (memberId: string, userId: string): Promise<vo
 
 // --- User Notification Details Functions (Client-Side) ---
 export const setUserPhoneNumberInFirestore = async (userId: string, phoneNumber: string): Promise<void> => {
-  if (!userId || !phoneNumber) { // Basic check
+  if (!userId || !phoneNumber) { 
     throw new Error("User ID and phone number are required.");
   }
-  // Basic validation: ensure it looks somewhat like a phone number (e.g., starts with + and has digits)
-  // More robust validation should be done if this is a critical feature.
-  if (!/^\+?[1-9]\d{1,14}$/.test(phoneNumber.replace(/\s+/g, ''))) {
-      // console.warn("Phone number may not be in a valid E.164 format:", phoneNumber);
-      // Not throwing error, but logging. Twilio will ultimately validate.
+  // Basic validation for E.164 format (can be enhanced)
+  // Twilio expects numbers in E.164 format (e.g., +1234567890)
+  const e164Regex = /^\+[1-9]\d{1,14}$/;
+  const sanitizedPhoneNumber = phoneNumber.replace(/\s+/g, ''); // Remove spaces
+
+  if (!e164Regex.test(sanitizedPhoneNumber)) {
+      console.warn("Phone number may not be in E.164 format:", sanitizedPhoneNumber, "Original:", phoneNumber);
+      // Depending on strictness, you might throw an error here or let Twilio handle validation.
+      // For now, we proceed but Twilio might reject if not E.164.
   }
 
   const docRef = doc(db, userNotificationDetailsCollectionName, userId);
   try {
-    // Using setDoc with merge: true to create or update the document,
-    // and only modify the phoneNumber field if other fields exist.
-    await setDoc(docRef, { phoneNumber: phoneNumber.replace(/\s+/g, '') }, { merge: true }); // Store without spaces
-    console.log(`Phone number set/updated for user ${userId} in Firestore.`);
+    await setDoc(docRef, { phoneNumber: sanitizedPhoneNumber }, { merge: true });
+    console.log(`Phone number set/updated for user ${userId} in Firestore to ${sanitizedPhoneNumber}.`);
   } catch (error: any) {
     console.error(`Error setting phone number for user ${userId} in Firestore:`, error);
     throw new Error("Failed to save phone number.");
+  }
+};
+
+export const getUserPhoneNumber = async (userId: string): Promise<string | null> => {
+  if (!userId) {
+    return null;
+  }
+  const docRef = doc(db, userNotificationDetailsCollectionName, userId);
+  try {
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data() as UserNotificationDetails;
+      return data.phoneNumber || null;
+    }
+    return null;
+  } catch (error: any) {
+    console.error(`Error fetching phone number for user ${userId} from Firestore:`, error);
+    // Optionally, re-throw or return null to indicate failure
+    return null; 
   }
 };

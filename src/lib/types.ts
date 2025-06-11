@@ -75,3 +75,8 @@ export interface SimplifiedVehicleForReport {
   insuranceExpiryDate: string;
   overallStatus: string;
 }
+
+// For the phone number form
+export type PhoneNumberFormData = {
+  phoneNumber: string;
+};

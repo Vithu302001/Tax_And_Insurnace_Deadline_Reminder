@@ -210,11 +210,13 @@ export default function DashboardPage() {
             {isSendingEmail ? <Loader2 className="mr-3 h-5 w-5 animate-spin" /> : <Mail className="mr-3 h-5 w-5" />}
             Send Summary Report
           </Button>
-          <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted/50 py-3">
+          <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted/50 py-3" disabled>
             <BellRing className="mr-3 h-5 w-5" /> Notification Settings (Soon)
           </Button>
-           <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted/50 py-3">
-            <Settings className="mr-3 h-5 w-5" /> Account Settings (Soon)
+           <Button variant="ghost" asChild className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted/50 py-3">
+            <Link href="/settings">
+              <Settings className="mr-3 h-5 w-5" /> Account Settings
+            </Link>
           </Button>
           <Button variant="ghost" onClick={handleLogout} className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted/50 py-3">
             <LogOut className="mr-3 h-5 w-5" /> Logout
@@ -324,7 +326,7 @@ export default function DashboardPage() {
       </Card>
 
       <p className="text-sm text-muted-foreground mt-8 text-center">
-        <strong>Note:</strong> Some features like setting , profile ,billing is not yet implemented.
+        <strong>Note:</strong> Some features like billing are not yet implemented.
       </p>
     </div>
   );
