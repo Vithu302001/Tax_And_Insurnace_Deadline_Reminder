@@ -324,8 +324,7 @@ export default function DashboardPage() {
       </Card>
 
       <p className="text-sm text-muted-foreground mt-8 text-center">
-        <strong>Note:</strong> Automated email notifications for expiry dates are a planned feature.
-        You can manually send a summary report for now.
+        <strong>Note:</strong> Some features like setting , profile ,billing is not yet implemented.
       </p>
     </div>
   );
