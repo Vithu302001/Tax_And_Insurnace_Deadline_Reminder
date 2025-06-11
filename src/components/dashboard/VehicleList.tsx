@@ -26,6 +26,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { deleteVehicle as deleteVehicleFromDb } from "@/lib/firebase/firestore";
@@ -182,7 +183,7 @@ export function VehicleList({ vehicles: initialVehicles, onDelete }: VehicleList
               let overallStatusBadge = taxStatus.badge;
               let overallStatusText = `Tax: ${taxStatus.status}`;
 
-              if (isBefore(vehicle.insuranceExpiryDate, vehicle.taxExpiryDate)) {
+              if (isBefore(new Date(vehicle.insuranceExpiryDate), new Date(vehicle.taxExpiryDate))) {
                 overallStatusBadge = insuranceStatus.badge;
               }
               if (taxStatus.daysLeft < 0 || insuranceStatus.daysLeft < 0) {

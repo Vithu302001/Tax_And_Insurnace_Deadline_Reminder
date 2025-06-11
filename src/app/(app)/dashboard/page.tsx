@@ -87,7 +87,7 @@ export default function DashboardPage() {
           duration: 10000,
         });
       } else {
-        console.logog(error.message)
+        console.log(error.message);
         toast({
           title: "Error fetching vehicles",
           description: error.message || "Could not load your vehicles.",
