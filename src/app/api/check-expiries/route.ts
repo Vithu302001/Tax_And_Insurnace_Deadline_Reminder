@@ -1,18 +1,17 @@
 
-// src/app/api/check-expiries/route.ts
 import { NextResponse } from 'next/server';
-import { getAllVehicles, updateVehicleNotificationTimestamp } from '@/lib/firebase/firestore';
-import { getAdminUserProfileById } from '@/lib/firebase/admin/users'; // UPDATED import
+import { getAdminDb, getAdminAuth, admin } from '@/lib/firebase/admin/config';
+import { getAdminUserProfileById } from '@/lib/firebase/admin/users';
+import { adminGetAllVehicles, adminUpdateVehicleNotificationTimestamp } from '@/lib/firebase/admin/firestore_admin';
 import { sendVehicleSummaryEmail } from '@/lib/services/emailService';
 import { generateSimpleHtmlReport } from '@/lib/reportUtils';
 import type { Vehicle, SimplifiedVehicleForReport } from '@/lib/types';
 import { format, differenceInDays, parseISO, addDays, isBefore } from 'date-fns';
-import { Timestamp } from 'firebase/firestore'; // CORRECTED import for Timestamp
+// Correct Timestamp import for Admin SDK usage will be admin.firestore.Timestamp
 
-const DAYS_UNTIL_EXPIRY_NOTIFICATION = 7; // Notify 7 days in advance
-const NOTIFICATION_RESEND_GRACE_PERIOD_DAYS = 10; // Don't resend notification for the same expiry for at least 10 days
+const DAYS_UNTIL_EXPIRY_NOTIFICATION = 7; 
+const NOTIFICATION_RESEND_GRACE_PERIOD_DAYS = 10;
 
-// Helper to get vehicle status for simplified report
 const getVehicleStatusForReport = (expiryDate: Date): string => {
     const daysLeft = differenceInDays(expiryDate, new Date());
     if (daysLeft < 0) return 'Expired';
@@ -28,6 +27,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const adminDb = getAdminDb();
+  const adminAuth = getAdminAuth(); // Initialize admin auth as well
+
+  if (!adminDb || !adminAuth) { // Check both db and auth
+    console.error('CRITICAL: Firebase Admin SDK (Firestore or Auth) is not available for cron job.');
+    return NextResponse.json({ error: 'Admin SDK not configured' }, { status: 500 });
+  }
+
+
   let vehiclesChecked = 0;
   let notificationsSent = 0;
   let errorsEncountered = 0;
@@ -35,7 +43,7 @@ export async function GET(request: Request) {
   console.log('Cron job /api/check-expiries started at:', new Date().toISOString());
 
   try {
-    const allVehicles = await getAllVehicles();
+    const allVehicles = await adminGetAllVehicles(adminDb); // Use admin function
     vehiclesChecked = allVehicles.length;
     details.push(`Found ${vehiclesChecked} vehicles to check.`);
 
@@ -43,21 +51,25 @@ export async function GET(request: Request) {
       const now = new Date();
       const tenDaysAgo = addDays(now, -NOTIFICATION_RESEND_GRACE_PERIOD_DAYS);
 
-      // Check Tax Expiry
+      // Ensure dates are actual Date objects
       const taxExpiryDateAsDate = vehicle.taxExpiryDate instanceof Date ? vehicle.taxExpiryDate : new Date(vehicle.taxExpiryDate);
+      const insuranceExpiryDateAsDate = vehicle.insuranceExpiryDate instanceof Date ? vehicle.insuranceExpiryDate : new Date(vehicle.insuranceExpiryDate);
+      const lastTaxNotificationAsDate = vehicle.lastTaxNotificationSent instanceof Date ? vehicle.lastTaxNotificationSent : vehicle.lastTaxNotificationSent ? new Date(vehicle.lastTaxNotificationSent) : null;
+      const lastInsuranceNotificationAsDate = vehicle.lastInsuranceNotificationSent instanceof Date ? vehicle.lastInsuranceNotificationSent : vehicle.lastInsuranceNotificationSent ? new Date(vehicle.lastInsuranceNotificationSent) : null;
+
+
       const taxDaysLeft = differenceInDays(taxExpiryDateAsDate, now);
       
       if (taxDaysLeft <= DAYS_UNTIL_EXPIRY_NOTIFICATION) {
-        const lastTaxNotificationAsDate = vehicle.lastTaxNotificationSent instanceof Date ? vehicle.lastTaxNotificationSent : vehicle.lastTaxNotificationSent ? new Date(vehicle.lastTaxNotificationSent) : null;
         if (!lastTaxNotificationAsDate || isBefore(lastTaxNotificationAsDate, tenDaysAgo)) {
           details.push(`Vehicle ${vehicle.id} (User: ${vehicle.userId}): Tax expires in ${taxDaysLeft} days. Last notification: ${lastTaxNotificationAsDate ? lastTaxNotificationAsDate.toISOString() : 'Never'}.`);
-          const userProfile = await getAdminUserProfileById(vehicle.userId); // USE ADMIN SDK
+          const userProfile = await getAdminUserProfileById(vehicle.userId); 
           if (userProfile && userProfile.email) {
             const simplifiedReportVehicle: SimplifiedVehicleForReport = {
               model: vehicle.model,
               registrationNumber: vehicle.registrationNumber,
               taxExpiryDate: format(taxExpiryDateAsDate, "MMM dd, yyyy"),
-              insuranceExpiryDate: format(vehicle.insuranceExpiryDate instanceof Date ? vehicle.insuranceExpiryDate : new Date(vehicle.insuranceExpiryDate), "MMM dd, yyyy"),
+              insuranceExpiryDate: format(insuranceExpiryDateAsDate, "MMM dd, yyyy"),
               overallStatus: getVehicleStatusForReport(taxExpiryDateAsDate),
             };
             const reportHtml = generateSimpleHtmlReport(
@@ -71,7 +83,8 @@ export async function GET(request: Request) {
                 reportHtml,
                 `Vehicle Tax Expiry Reminder: ${vehicle.model}`
               );
-              await updateVehicleNotificationTimestamp(vehicle.id, 'tax', Timestamp.now());
+              // Use admin.firestore.Timestamp and admin.firestore.FieldValue
+              await adminUpdateVehicleNotificationTimestamp(adminDb, vehicle.id, 'tax', admin.firestore.Timestamp.now(), admin.firestore.FieldValue.serverTimestamp);
               notificationsSent++;
               details.push(`Tax notification sent for vehicle ${vehicle.id} to user ${vehicle.userId} (${userProfile.email}).`);
             } catch (emailError) {
@@ -88,15 +101,12 @@ export async function GET(request: Request) {
         }
       }
 
-      // Check Insurance Expiry
-      const insuranceExpiryDateAsDate = vehicle.insuranceExpiryDate instanceof Date ? vehicle.insuranceExpiryDate : new Date(vehicle.insuranceExpiryDate);
       const insuranceDaysLeft = differenceInDays(insuranceExpiryDateAsDate, now);
 
       if (insuranceDaysLeft <= DAYS_UNTIL_EXPIRY_NOTIFICATION) {
-        const lastInsuranceNotificationAsDate = vehicle.lastInsuranceNotificationSent instanceof Date ? vehicle.lastInsuranceNotificationSent : vehicle.lastInsuranceNotificationSent ? new Date(vehicle.lastInsuranceNotificationSent) : null;
          if (!lastInsuranceNotificationAsDate || isBefore(lastInsuranceNotificationAsDate, tenDaysAgo)) {
           details.push(`Vehicle ${vehicle.id} (User: ${vehicle.userId}): Insurance expires in ${insuranceDaysLeft} days. Last notification: ${lastInsuranceNotificationAsDate ? lastInsuranceNotificationAsDate.toISOString() : 'Never'}.`);
-          const userProfile = await getAdminUserProfileById(vehicle.userId); // USE ADMIN SDK
+          const userProfile = await getAdminUserProfileById(vehicle.userId);
           if (userProfile && userProfile.email) {
              const simplifiedReportVehicle: SimplifiedVehicleForReport = {
               model: vehicle.model,
@@ -116,7 +126,7 @@ export async function GET(request: Request) {
                 reportHtml,
                 `Vehicle Insurance Expiry Reminder: ${vehicle.model}`
               );
-              await updateVehicleNotificationTimestamp(vehicle.id, 'insurance', Timestamp.now());
+              await adminUpdateVehicleNotificationTimestamp(adminDb, vehicle.id, 'insurance', admin.firestore.Timestamp.now(), admin.firestore.FieldValue.serverTimestamp);
               notificationsSent++;
               details.push(`Insurance notification sent for vehicle ${vehicle.id} to user ${vehicle.userId} (${userProfile.email}).`);
             } catch (emailError) {
@@ -151,7 +161,7 @@ export async function GET(request: Request) {
         vehiclesChecked,
         notificationsSent,
         errorsEncountered,
-        details: error.message,
+        details: error.message, // Ensure the error message is included in the response
         error: 'Failed to process expiry checks.'
     }, { status: 500 });
   }
