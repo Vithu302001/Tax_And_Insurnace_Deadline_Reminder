@@ -13,6 +13,7 @@ import {
   serverTimestamp,
   getDoc,
   writeBatch,
+  setDoc, // Added for setDoc
 } from "firebase/firestore";
 import { db } from "./config";
 import type {
@@ -26,6 +27,8 @@ import type {
 
 const vehiclesCollectionName = "vehicles";
 const membersCollectionName = "members";
+const userNotificationDetailsCollectionName = "userNotificationDetails";
+
 
 const INDEX_URL_MARKER_START = "MISSING_INDEX_URL_START";
 const INDEX_URL_MARKER_END = "MISSING_INDEX_URL_END";
@@ -36,9 +39,12 @@ const extractIndexUrl = (errorMessage: string): string | null => {
 };
 
 // Helper to convert Firestore Timestamps (client or admin) or date strings/numbers to Date objects
-const convertToDate = (field: any): Date | undefined => {
+export const convertToDate = (field: any): Date | undefined => {
   if (!field) return undefined;
-  if (typeof field.toDate === 'function') { // Works for both Admin and Client Timestamps
+  if (field instanceof Timestamp) { // Handle client-side Timestamp
+    return field.toDate();
+  }
+  if (typeof field.toDate === 'function') { // Works for Admin Timestamps (and client-side just in case)
     return field.toDate();
   }
   if (typeof field === 'string' || typeof field === 'number') {
@@ -55,7 +61,7 @@ const convertToDate = (field: any): Date | undefined => {
   if (field instanceof Date) {
       return field;
   }
-  console.warn("Unsupported date/timestamp type in convertToDate:", field);
+  console.warn("Unsupported date/timestamp type in convertToDate:", field, typeof field);
   return undefined;
 };
 
@@ -63,14 +69,14 @@ const convertToDate = (field: any): Date | undefined => {
 // --- Vehicle Functions ---
 
 export const toAppVehicle = (docData: any, id: string): Vehicle => {
-  const data = docData as VehicleFirestoreData; // This type hint is for structure, actual fields might be Admin Timestamps
+  const data = docData as VehicleFirestoreData; 
   return {
     id,
     userId: data.userId,
     model: data.model,
     registrationNumber: data.registrationNumber,
-    taxExpiryDate: convertToDate(data.taxExpiryDate)!, // Assert non-null as it's required
-    insuranceExpiryDate: convertToDate(data.insuranceExpiryDate)!, // Assert non-null as it's required
+    taxExpiryDate: convertToDate(data.taxExpiryDate)!, 
+    insuranceExpiryDate: convertToDate(data.insuranceExpiryDate)!, 
     insuranceCompany: data.insuranceCompany || undefined,
     memberId: data.memberId || undefined,
     memberName: data.memberName || undefined,
@@ -82,19 +88,25 @@ export const toAppVehicle = (docData: any, id: string): Vehicle => {
 };
 
 // This function is for client-side operations
-const toFirestoreVehicle = (vehicleData: Partial<VehicleFormData & { userId?: string; memberName?: string | null; lastTaxNotificationSent?: Date; lastInsuranceNotificationSent?: Date }>) => {
+const toFirestoreVehicle = (vehicleData: Partial<VehicleFormData & { userId?: string; memberName?: string | null; lastTaxNotificationSent?: Date | null; lastInsuranceNotificationSent?: Date | null }>) => {
   const data: any = { ...vehicleData };
-  if (vehicleData.taxExpiryDate) {
-    data.taxExpiryDate = Timestamp.fromDate(new Date(vehicleData.taxExpiryDate));
+  if (vehicleData.taxExpiryDate instanceof Date) {
+    data.taxExpiryDate = Timestamp.fromDate(vehicleData.taxExpiryDate);
   }
-  if (vehicleData.insuranceExpiryDate) {
-    data.insuranceExpiryDate = Timestamp.fromDate(new Date(vehicleData.insuranceExpiryDate));
+  if (vehicleData.insuranceExpiryDate instanceof Date) {
+    data.insuranceExpiryDate = Timestamp.fromDate(vehicleData.insuranceExpiryDate);
   }
-  if (vehicleData.lastTaxNotificationSent) {
-    data.lastTaxNotificationSent = Timestamp.fromDate(new Date(vehicleData.lastTaxNotificationSent));
+  
+  if (vehicleData.lastTaxNotificationSent instanceof Date) {
+    data.lastTaxNotificationSent = Timestamp.fromDate(vehicleData.lastTaxNotificationSent);
+  } else if (vehicleData.lastTaxNotificationSent === null) {
+    data.lastTaxNotificationSent = null;
   }
-  if (vehicleData.lastInsuranceNotificationSent) {
-    data.lastInsuranceNotificationSent = Timestamp.fromDate(new Date(vehicleData.lastInsuranceNotificationSent));
+
+  if (vehicleData.lastInsuranceNotificationSent instanceof Date) {
+    data.lastInsuranceNotificationSent = Timestamp.fromDate(vehicleData.lastInsuranceNotificationSent);
+  } else if (vehicleData.lastInsuranceNotificationSent === null) {
+     data.lastInsuranceNotificationSent = null;
   }
   
   if (vehicleData.hasOwnProperty('memberId')) {
@@ -112,7 +124,8 @@ const toFirestoreVehicle = (vehicleData: Partial<VehicleFormData & { userId?: st
   }
 
   Object.keys(data).forEach(key => {
-    if (data[key] === undefined && !['memberId', 'memberName', 'insuranceCompany'].includes(key)) {
+    // Allow null for fields that can be explicitly set to null
+    if (data[key] === undefined && !['memberId', 'memberName', 'insuranceCompany', 'lastTaxNotificationSent', 'lastInsuranceNotificationSent'].includes(key)) {
         delete data[key];
     }
   });
@@ -131,22 +144,25 @@ export const addVehicle = async (userId: string, vehicleData: VehicleFormData): 
     }
   }
 
-  const firestorePayload: Partial<VehicleFirestoreData> & { userId: string } = {
-    userId,
+  const firestorePayload = toFirestoreVehicle({
+    userId, // Not part of toFirestoreVehicle schema but needed at root
     model: vehicleData.model,
     registrationNumber: vehicleData.registrationNumber,
-    taxExpiryDate: Timestamp.fromDate(new Date(vehicleData.taxExpiryDate)),
-    insuranceExpiryDate: Timestamp.fromDate(new Date(vehicleData.insuranceExpiryDate)),
-    insuranceCompany: vehicleData.insuranceCompany || null,
-    memberId: memberIdToStore,
-    memberName: memberName,
-    createdAt: serverTimestamp() as Timestamp,
-    updatedAt: serverTimestamp() as Timestamp,
+    taxExpiryDate: vehicleData.taxExpiryDate,
+    insuranceExpiryDate: vehicleData.insuranceExpiryDate,
+    insuranceCompany: vehicleData.insuranceCompany || undefined, // Use undefined if empty for toFirestoreVehicle logic
+    memberId: memberIdToStore || undefined,
+    memberName: memberName || undefined,
     lastTaxNotificationSent: null,
     lastInsuranceNotificationSent: null,
-  };
+  });
 
-  const docRef = await addDoc(collection(db, vehiclesCollectionName), firestorePayload);
+  const docRef = await addDoc(collection(db, vehiclesCollectionName), {
+    ...firestorePayload,
+    userId, // Ensure userId is at the root
+    createdAt: serverTimestamp() as Timestamp, // Cast for client SDK
+    updatedAt: serverTimestamp() as Timestamp, // Cast for client SDK
+  });
   return docRef.id;
 };
 
@@ -171,7 +187,6 @@ export const getUserVehicles = async (userId: string): Promise<Vehicle[]> => {
   }
 };
 
-// This version is for client-side or where client `db` is appropriate
 export const getVehicleById = async (vehicleId: string, userId?: string): Promise<Vehicle | null> => {
   const docRef = doc(db, vehiclesCollectionName, vehicleId);
   const docSnap = await getDoc(docRef);
@@ -219,24 +234,6 @@ export const updateVehicle = async (vehicleId: string, userId: string, vehicleDa
   });
 };
 
-// This version is for client-side or where client `db` is appropriate
-// For admin operations, see firestore_admin.ts
-export const updateVehicleNotificationTimestamp = async (
-  vehicleId: string,
-  notificationType: 'tax' | 'insurance',
-  timestamp: Timestamp // Expects client SDK Timestamp
-): Promise<void> => {
-  const docRef = doc(db, vehiclesCollectionName, vehicleId);
-  const updateData: any = { updatedAt: serverTimestamp() };
-  if (notificationType === 'tax') {
-    updateData.lastTaxNotificationSent = timestamp;
-  } else {
-    updateData.lastInsuranceNotificationSent = timestamp;
-  }
-  await updateDoc(docRef, updateData);
-};
-
-
 export const deleteVehicle = async (vehicleId: string, userId: string): Promise<void> => {
   const existingVehicle = await getVehicleById(vehicleId, userId);
   if (!existingVehicle) {
@@ -260,8 +257,11 @@ const toAppMember = (docData: any, id: string): Member => {
   };
 };
 
-const toFirestoreMember = (memberData: Partial<MemberFormData & { userId: string }>) => {
+const toFirestoreMember = (memberData: Partial<MemberFormData & { userId?: string }>) => {
   const data: any = { ...memberData };
+  // Ensure dates are not accidentally passed if schema changes
+  delete data.createdAt;
+  delete data.updatedAt;
   return data;
 };
 
@@ -360,4 +360,26 @@ export const deleteMember = async (memberId: string, userId: string): Promise<vo
   await batch.commit();
 };
 
-// Removed the old client-side getUserProfileById stub as it's replaced by admin version for cron
+// --- User Notification Details Functions (Client-Side) ---
+export const setUserPhoneNumberInFirestore = async (userId: string, phoneNumber: string): Promise<void> => {
+  if (!userId || !phoneNumber) { // Basic check
+    throw new Error("User ID and phone number are required.");
+  }
+  // Basic validation: ensure it looks somewhat like a phone number (e.g., starts with + and has digits)
+  // More robust validation should be done if this is a critical feature.
+  if (!/^\+?[1-9]\d{1,14}$/.test(phoneNumber.replace(/\s+/g, ''))) {
+      // console.warn("Phone number may not be in a valid E.164 format:", phoneNumber);
+      // Not throwing error, but logging. Twilio will ultimately validate.
+  }
+
+  const docRef = doc(db, userNotificationDetailsCollectionName, userId);
+  try {
+    // Using setDoc with merge: true to create or update the document,
+    // and only modify the phoneNumber field if other fields exist.
+    await setDoc(docRef, { phoneNumber: phoneNumber.replace(/\s+/g, '') }, { merge: true }); // Store without spaces
+    console.log(`Phone number set/updated for user ${userId} in Firestore.`);
+  } catch (error: any) {
+    console.error(`Error setting phone number for user ${userId} in Firestore:`, error);
+    throw new Error("Failed to save phone number.");
+  }
+};

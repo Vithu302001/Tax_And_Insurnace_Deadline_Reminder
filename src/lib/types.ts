@@ -6,7 +6,13 @@ export interface UserProfile {
   email: string | null;
   displayName?: string | null;
   photoURL?: string | null;
-  phoneNumber?: string | null; // Added for WhatsApp
+  phoneNumber?: string | null; // This will be populated from Firestore for cron/notifications
+}
+
+// New type for storing user-specific notification details in Firestore
+export interface UserNotificationDetails {
+  phoneNumber?: string | null;
+  // Potentially other notification preferences could be added here in the future
 }
 
 export interface Vehicle {
@@ -32,8 +38,8 @@ export interface VehicleFirestoreData extends Omit<Vehicle, 'id' | 'taxExpiryDat
   memberName?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
-  lastTaxNotificationSent?: Timestamp;
-  lastInsuranceNotificationSent?: Timestamp;
+  lastTaxNotificationSent?: Timestamp | null; // Ensure consistency, can be null
+  lastInsuranceNotificationSent?: Timestamp | null; // Ensure consistency, can be null
 }
 
 export type VehicleFormData = {
