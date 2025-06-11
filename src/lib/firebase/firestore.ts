@@ -14,9 +14,9 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { db } from "./config";
-import type { 
-  Vehicle, 
-  VehicleFormData, 
+import type {
+  Vehicle,
+  VehicleFormData,
   VehicleFirestoreData,
   Member,
   MemberFormData,
@@ -25,6 +25,14 @@ import type {
 
 const vehiclesCollectionName = "vehicles";
 const membersCollectionName = "members";
+
+const INDEX_URL_MARKER_START = "MISSING_INDEX_URL_START";
+const INDEX_URL_MARKER_END = "MISSING_INDEX_URL_END";
+
+const extractIndexUrl = (errorMessage: string): string | null => {
+  const match = errorMessage.match(/https:\/\/console\.firebase\.google\.com\/project\/[^/]+\/firestore\/indexes\/composite-create\?create_composite=[^\s)]+/);
+  return match ? match[0] : null;
+};
 
 
 // --- Vehicle Functions ---
@@ -66,13 +74,21 @@ export const addVehicle = async (userId: string, vehicleData: VehicleFormData): 
 };
 
 export const getUserVehicles = async (userId: string): Promise<Vehicle[]> => {
-  const q = query(
-    collection(db, vehiclesCollectionName),
-    where("userId", "==", userId),
-    orderBy("taxExpiryDate", "asc")
-  );
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => toAppVehicle(doc.data(), doc.id));
+  try {
+    const q = query(
+      collection(db, vehiclesCollectionName),
+      where("userId", "==", userId),
+      orderBy("taxExpiryDate", "asc")
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => toAppVehicle(doc.data(), doc.id));
+  } catch (error: any) {
+    const indexUrl = extractIndexUrl(error.message);
+    if (indexUrl) {
+      throw new Error(`${error.message} ${INDEX_URL_MARKER_START}${indexUrl}${INDEX_URL_MARKER_END}`);
+    }
+    throw error;
+  }
 };
 
 export const getVehicleById = async (vehicleId: string, userId: string): Promise<Vehicle | null> => {
@@ -140,13 +156,21 @@ export const addMember = async (userId: string, memberData: MemberFormData): Pro
 };
 
 export const getUserMembers = async (userId: string): Promise<Member[]> => {
-  const q = query(
-    collection(db, membersCollectionName),
-    where("userId", "==", userId),
-    orderBy("name", "asc")
-  );
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => toAppMember(doc.data(), doc.id));
+  try {
+    const q = query(
+      collection(db, membersCollectionName),
+      where("userId", "==", userId),
+      orderBy("name", "asc")
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => toAppMember(doc.data(), doc.id));
+  } catch (error: any) {
+    const indexUrl = extractIndexUrl(error.message);
+    if (indexUrl) {
+      throw new Error(`${error.message} ${INDEX_URL_MARKER_START}${indexUrl}${INDEX_URL_MARKER_END}`);
+    }
+    throw error;
+  }
 };
 
 export const getMemberById = async (memberId: string, userId: string): Promise<Member | null> => {
@@ -185,3 +209,4 @@ export const deleteMember = async (memberId: string, userId: string): Promise<vo
   const docRef = doc(db, membersCollectionName, memberId);
   await deleteDoc(docRef);
 };
+

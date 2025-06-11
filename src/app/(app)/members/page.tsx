@@ -6,30 +6,57 @@ import Link from "next/link";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { getUserMembers } from "@/lib/firebase/firestore";
 import type { Member } from "@/lib/types";
-import { MemberList } from "@/components/dashboard/MemberList"; 
+import { MemberList } from "@/components/dashboard/MemberList";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, PlusCircle, User as UserIcon } from "lucide-react";
+import { Loader2, PlusCircle, User as UserIcon, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+const INDEX_URL_MARKER_START = "MISSING_INDEX_URL_START";
+const INDEX_URL_MARKER_END = "MISSING_INDEX_URL_END";
+
+const extractMarkedUrl = (message: string): string | null => {
+  const startIndex = message.indexOf(INDEX_URL_MARKER_START);
+  const endIndex = message.indexOf(INDEX_URL_MARKER_END);
+
+  if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
+    return message.substring(startIndex + INDEX_URL_MARKER_START.length, endIndex);
+  }
+  return null;
+};
 
 export default function MembersPage() {
   const { user } = useAuth();
   const [members, setMembers] = useState<Member[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
+  const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
 
   const fetchMembers = async () => {
     if (!user) return;
     setIsLoading(true);
+    setIndexCreationUrl(null);
     try {
       const userMembers = await getUserMembers(user.uid);
       setMembers(userMembers);
     } catch (error: any) {
-      toast({
-        title: "Error fetching members",
-        description: error.message || "Could not load your members.",
-        variant: "destructive",
-      });
+      const url = extractMarkedUrl(error.message);
+      if (url) {
+        setIndexCreationUrl(url);
+        toast({
+          title: "Firestore Index Required",
+          description: "A Firestore index is needed to display members. Please create it using the link shown on the page.",
+          variant: "destructive",
+          duration: 10000,
+        });
+      } else {
+        toast({
+          title: "Error fetching members",
+          description: error.message || "Could not load your members.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -40,7 +67,7 @@ export default function MembersPage() {
       fetchMembers();
     }
   }, [user]);
-  
+
   const handleDeleteMember = (deletedMemberId: string) => {
     const updatedMembers = members.filter(m => m.id !== deletedMemberId);
     setMembers(updatedMembers);
@@ -63,7 +90,23 @@ export default function MembersPage() {
           </Link>
         </Button>
       </div>
-      
+
+      {indexCreationUrl && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Firestore Index Required</AlertTitle>
+          <AlertDescription>
+            To display your members, a Firestore index needs to be created. Please click the link below and then click "Create Index" in the Firebase console:
+            <br />
+            <a href={indexCreationUrl} target="_blank" rel="noopener noreferrer" className="underline font-medium hover:text-destructive-foreground/80">
+              {indexCreationUrl}
+            </a>
+            <br />
+            After the index is created (usually takes a few minutes), please refresh this page.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Card className="shadow-md">
         <CardHeader>
             <CardTitle className="text-xl font-headline">
@@ -74,7 +117,7 @@ export default function MembersPage() {
             </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading && members.length === 0 ? ( 
+          {isLoading && members.length === 0 && !indexCreationUrl ? (
             <div className="flex justify-center items-center h-64">
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
             </div>

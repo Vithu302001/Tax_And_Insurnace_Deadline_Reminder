@@ -10,23 +10,24 @@ import type { Vehicle } from "@/lib/types";
 import { VehicleList } from "@/components/dashboard/VehicleList";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { 
-  Loader2, 
-  PlusCircle, 
-  Settings, 
-  LogOut, 
-  Car, 
-  ListChecks, 
-  AlertTriangle, 
-  CalendarClock, 
+import {
+  Loader2,
+  PlusCircle,
+  Settings,
+  LogOut,
+  Car,
+  ListChecks,
+  AlertTriangle,
+  CalendarClock,
   CalendarX2,
   BellRing,
-  Mail // Added Mail icon
+  Mail
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { differenceInDays, parseISO } from "date-fns";
 import { sendSummaryEmailAction } from "@/app/(app)/actions/sendSummaryEmailAction";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type StatCounts = {
   totalActive: number;
@@ -36,6 +37,20 @@ type StatCounts = {
 };
 
 type ActiveFilter = "all" | "urgent" | "upcoming" | "expired";
+
+const INDEX_URL_MARKER_START = "MISSING_INDEX_URL_START";
+const INDEX_URL_MARKER_END = "MISSING_INDEX_URL_END";
+
+const extractMarkedUrl = (message: string): string | null => {
+  const startIndex = message.indexOf(INDEX_URL_MARKER_START);
+  const endIndex = message.indexOf(INDEX_URL_MARKER_END);
+
+  if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
+    return message.substring(startIndex + INDEX_URL_MARKER_START.length, endIndex);
+  }
+  return null;
+};
+
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -52,19 +67,32 @@ export default function DashboardPage() {
   });
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>("all");
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
 
   const fetchVehicles = async () => {
     if (!user) return;
     setIsLoading(true);
+    setIndexCreationUrl(null);
     try {
       const userVehicles = await getUserVehicles(user.uid);
       setVehicles(userVehicles);
     } catch (error: any) {
-      toast({
-        title: "Error fetching vehicles",
-        description: error.message || "Could not load your vehicles.",
-        variant: "destructive",
-      });
+      const url = extractMarkedUrl(error.message);
+      if (url) {
+        setIndexCreationUrl(url);
+        toast({
+          title: "Firestore Index Required",
+          description: "A Firestore index is needed to display vehicles. Please create it using the link shown on the page.",
+          variant: "destructive",
+          duration: 10000,
+        });
+      } else {
+        toast({
+          title: "Error fetching vehicles",
+          description: error.message || "Could not load your vehicles.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -123,7 +151,7 @@ export default function DashboardPage() {
       return true;
     });
   }, [vehicles, activeFilter]);
-  
+
   const handleDeleteVehicle = (deletedVehicleId: string) => {
     const updatedVehicles = vehicles.filter(v => v.id !== deletedVehicleId);
     setVehicles(updatedVehicles);
@@ -172,8 +200,8 @@ export default function DashboardPage() {
 
       <Card className="mb-6 shadow-md">
         <CardContent className="p-4 space-y-1">
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted/50 py-3"
             onClick={handleSendSummaryEmail}
             disabled={isSendingEmail}
@@ -192,7 +220,7 @@ export default function DashboardPage() {
           </Button>
         </CardContent>
       </Card>
-      
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <Card className="shadow-md">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -242,6 +270,22 @@ export default function DashboardPage() {
         </Button>
       </div>
 
+      {indexCreationUrl && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Firestore Index Required</AlertTitle>
+          <AlertDescription>
+            To display your vehicles, a Firestore index needs to be created. Please click the link below and then click "Create Index" in the Firebase console:
+            <br />
+            <a href={indexCreationUrl} target="_blank" rel="noopener noreferrer" className="underline font-medium hover:text-destructive-foreground/80">
+              {indexCreationUrl}
+            </a>
+            <br />
+            After the index is created (usually takes a few minutes), please refresh this page.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="mb-4 flex flex-wrap gap-2">
         {(["all", "urgent", "upcoming", "expired"] as ActiveFilter[]).map((filter) => (
           <Button
@@ -254,7 +298,7 @@ export default function DashboardPage() {
           </Button>
         ))}
       </div>
-      
+
       <Card className="shadow-md">
         <CardHeader>
             <CardTitle className="text-xl font-headline">
@@ -268,7 +312,7 @@ export default function DashboardPage() {
             </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading && vehicles.length === 0 ? ( 
+          {isLoading && vehicles.length === 0 && !indexCreationUrl ? (
             <div className="flex justify-center items-center h-64">
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
             </div>
@@ -277,7 +321,7 @@ export default function DashboardPage() {
           )}
         </CardContent>
       </Card>
-      
+
       <p className="text-sm text-muted-foreground mt-8 text-center">
         <strong>Note:</strong> Automated email notifications for expiry dates are a planned feature.
         You can manually send a summary report for now.
