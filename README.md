@@ -1,5 +1,3 @@
-# Firebase Studio
+# Remind Me
+An reminder app via email about vehicles tax and insurace expiry .
 
-This is a NextJS starter in Firebase Studio.
-
-To get started, take a look at src/app/page.tsx.
