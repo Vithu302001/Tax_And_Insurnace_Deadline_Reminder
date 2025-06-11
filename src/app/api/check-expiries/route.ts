@@ -1,11 +1,13 @@
 
 // src/app/api/check-expiries/route.ts
 import { NextResponse } from 'next/server';
-import { getAllVehicles, updateVehicleNotificationTimestamp, getUserProfileById } from '@/lib/firebase/firestore';
+import { getAllVehicles, updateVehicleNotificationTimestamp } from '@/lib/firebase/firestore';
+import { getAdminUserProfileById } from '@/lib/firebase/admin/users'; // UPDATED import
 import { sendVehicleSummaryEmail } from '@/lib/services/emailService';
 import { generateSimpleHtmlReport } from '@/lib/reportUtils';
 import type { Vehicle, SimplifiedVehicleForReport } from '@/lib/types';
-import { format, differenceInDays, parseISO, addDays, isBefore, Timestamp } from 'date-fns';
+import { format, differenceInDays, parseISO, addDays, isBefore } from 'date-fns';
+import { Timestamp } from 'firebase/firestore'; // CORRECTED import for Timestamp
 
 const DAYS_UNTIL_EXPIRY_NOTIFICATION = 7; // Notify 7 days in advance
 const NOTIFICATION_RESEND_GRACE_PERIOD_DAYS = 10; // Don't resend notification for the same expiry for at least 10 days
@@ -42,21 +44,21 @@ export async function GET(request: Request) {
       const tenDaysAgo = addDays(now, -NOTIFICATION_RESEND_GRACE_PERIOD_DAYS);
 
       // Check Tax Expiry
-      const taxExpiryDate = vehicle.taxExpiryDate instanceof Timestamp ? vehicle.taxExpiryDate.toDate() : new Date(vehicle.taxExpiryDate);
-      const taxDaysLeft = differenceInDays(taxExpiryDate, now);
-
+      const taxExpiryDateAsDate = vehicle.taxExpiryDate instanceof Date ? vehicle.taxExpiryDate : new Date(vehicle.taxExpiryDate);
+      const taxDaysLeft = differenceInDays(taxExpiryDateAsDate, now);
+      
       if (taxDaysLeft <= DAYS_UNTIL_EXPIRY_NOTIFICATION) {
-        const lastTaxNotification = vehicle.lastTaxNotificationSent instanceof Timestamp ? vehicle.lastTaxNotificationSent.toDate() : vehicle.lastTaxNotificationSent ? new Date(vehicle.lastTaxNotificationSent) : null;
-        if (!lastTaxNotification || isBefore(lastTaxNotification, tenDaysAgo)) {
-          details.push(`Vehicle ${vehicle.id} (User: ${vehicle.userId}): Tax expires in ${taxDaysLeft} days. Last notification: ${lastTaxNotification ? lastTaxNotification.toISOString() : 'Never'}.`);
-          const userProfile = await getUserProfileById(vehicle.userId);
+        const lastTaxNotificationAsDate = vehicle.lastTaxNotificationSent instanceof Date ? vehicle.lastTaxNotificationSent : vehicle.lastTaxNotificationSent ? new Date(vehicle.lastTaxNotificationSent) : null;
+        if (!lastTaxNotificationAsDate || isBefore(lastTaxNotificationAsDate, tenDaysAgo)) {
+          details.push(`Vehicle ${vehicle.id} (User: ${vehicle.userId}): Tax expires in ${taxDaysLeft} days. Last notification: ${lastTaxNotificationAsDate ? lastTaxNotificationAsDate.toISOString() : 'Never'}.`);
+          const userProfile = await getAdminUserProfileById(vehicle.userId); // USE ADMIN SDK
           if (userProfile && userProfile.email) {
             const simplifiedReportVehicle: SimplifiedVehicleForReport = {
               model: vehicle.model,
               registrationNumber: vehicle.registrationNumber,
-              taxExpiryDate: format(taxExpiryDate, "MMM dd, yyyy"),
-              insuranceExpiryDate: format(vehicle.insuranceExpiryDate instanceof Timestamp ? vehicle.insuranceExpiryDate.toDate() : new Date(vehicle.insuranceExpiryDate), "MMM dd, yyyy"),
-              overallStatus: getVehicleStatusForReport(taxExpiryDate),
+              taxExpiryDate: format(taxExpiryDateAsDate, "MMM dd, yyyy"),
+              insuranceExpiryDate: format(vehicle.insuranceExpiryDate instanceof Date ? vehicle.insuranceExpiryDate : new Date(vehicle.insuranceExpiryDate), "MMM dd, yyyy"),
+              overallStatus: getVehicleStatusForReport(taxExpiryDateAsDate),
             };
             const reportHtml = generateSimpleHtmlReport(
               userProfile.displayName || userProfile.email.split('@')[0],
@@ -78,29 +80,30 @@ export async function GET(request: Request) {
             }
           } else {
             details.push(`Tax expiring for vehicle ${vehicle.id} (user ${vehicle.userId}), but user email not found or notification sent recently.`);
-            if(!userProfile) console.warn(`Could not find user profile for userId: ${vehicle.userId} to send tax expiry email.`);
+            if(!userProfile) console.warn(`Could not find user profile for userId: ${vehicle.userId} (Admin SDK) to send tax expiry email.`);
+             else if (!userProfile.email) console.warn(`User profile found for userId: ${vehicle.userId} (Admin SDK) but no email address available.`);
           }
         } else {
-          details.push(`Vehicle ${vehicle.id}: Tax expiring soon, but notification already sent recently (${lastTaxNotification?.toISOString()}).`);
+          details.push(`Vehicle ${vehicle.id}: Tax expiring soon, but notification already sent recently (${lastTaxNotificationAsDate?.toISOString()}).`);
         }
       }
 
       // Check Insurance Expiry
-      const insuranceExpiryDate = vehicle.insuranceExpiryDate instanceof Timestamp ? vehicle.insuranceExpiryDate.toDate() : new Date(vehicle.insuranceExpiryDate);
-      const insuranceDaysLeft = differenceInDays(insuranceExpiryDate, now);
+      const insuranceExpiryDateAsDate = vehicle.insuranceExpiryDate instanceof Date ? vehicle.insuranceExpiryDate : new Date(vehicle.insuranceExpiryDate);
+      const insuranceDaysLeft = differenceInDays(insuranceExpiryDateAsDate, now);
 
       if (insuranceDaysLeft <= DAYS_UNTIL_EXPIRY_NOTIFICATION) {
-        const lastInsuranceNotification = vehicle.lastInsuranceNotificationSent instanceof Timestamp ? vehicle.lastInsuranceNotificationSent.toDate() : vehicle.lastInsuranceNotificationSent ? new Date(vehicle.lastInsuranceNotificationSent) : null;
-         if (!lastInsuranceNotification || isBefore(lastInsuranceNotification, tenDaysAgo)) {
-          details.push(`Vehicle ${vehicle.id} (User: ${vehicle.userId}): Insurance expires in ${insuranceDaysLeft} days. Last notification: ${lastInsuranceNotification ? lastInsuranceNotification.toISOString() : 'Never'}.`);
-          const userProfile = await getUserProfileById(vehicle.userId);
+        const lastInsuranceNotificationAsDate = vehicle.lastInsuranceNotificationSent instanceof Date ? vehicle.lastInsuranceNotificationSent : vehicle.lastInsuranceNotificationSent ? new Date(vehicle.lastInsuranceNotificationSent) : null;
+         if (!lastInsuranceNotificationAsDate || isBefore(lastInsuranceNotificationAsDate, tenDaysAgo)) {
+          details.push(`Vehicle ${vehicle.id} (User: ${vehicle.userId}): Insurance expires in ${insuranceDaysLeft} days. Last notification: ${lastInsuranceNotificationAsDate ? lastInsuranceNotificationAsDate.toISOString() : 'Never'}.`);
+          const userProfile = await getAdminUserProfileById(vehicle.userId); // USE ADMIN SDK
           if (userProfile && userProfile.email) {
              const simplifiedReportVehicle: SimplifiedVehicleForReport = {
               model: vehicle.model,
               registrationNumber: vehicle.registrationNumber,
-              taxExpiryDate: format(taxExpiryDate, "MMM dd, yyyy"),
-              insuranceExpiryDate: format(insuranceExpiryDate, "MMM dd, yyyy"),
-              overallStatus: getVehicleStatusForReport(insuranceExpiryDate),
+              taxExpiryDate: format(taxExpiryDateAsDate, "MMM dd, yyyy"),
+              insuranceExpiryDate: format(insuranceExpiryDateAsDate, "MMM dd, yyyy"),
+              overallStatus: getVehicleStatusForReport(insuranceExpiryDateAsDate),
             };
             const reportHtml = generateSimpleHtmlReport(
               userProfile.displayName || userProfile.email.split('@')[0],
@@ -122,10 +125,11 @@ export async function GET(request: Request) {
             }
           } else {
             details.push(`Insurance expiring for vehicle ${vehicle.id} (user ${vehicle.userId}), but user email not found or notification sent recently.`);
-            if(!userProfile) console.warn(`Could not find user profile for userId: ${vehicle.userId} to send insurance expiry email.`);
+             if(!userProfile) console.warn(`Could not find user profile for userId: ${vehicle.userId} (Admin SDK) to send insurance expiry email.`);
+             else if (!userProfile.email) console.warn(`User profile found for userId: ${vehicle.userId} (Admin SDK) but no email address available for insurance.`);
           }
         } else {
-           details.push(`Vehicle ${vehicle.id}: Insurance expiring soon, but notification already sent recently (${lastInsuranceNotification?.toISOString()}).`);
+           details.push(`Vehicle ${vehicle.id}: Insurance expiring soon, but notification already sent recently (${lastInsuranceNotificationAsDate?.toISOString()}).`);
         }
       }
     }
